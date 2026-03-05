@@ -357,11 +357,11 @@ function normalizeAvail(raw) {
   return out;
 }
 
-function getState(avail, date, hour) {
-  const d = avail[date];
-  if (!d) return ST_EMPTY;
-  const v = d[String(hour)];
-  return (v === ST_AVAIL || v === ST_BUSY) ? v : ST_EMPTY;
+// dayAvail: 单天字典 { "9": 1, "12": 2, ... }
+function getState(dayAvail, hour) {
+  if (!dayAvail) return ST_EMPTY;
+  const v = dayAvail[String(hour)];
+  return (v === ST_AVAIL || v === ST_BUSY) ? Number(v) : ST_EMPTY;
 }
 
 /* ─── Boot ─── */
@@ -571,7 +571,7 @@ function renderDayTR(date) {
   const myDA = ME ? (myAvail[date] || {}) : {};
 
   const rows = hours.map(h => {
-    const avails = ppl.map((p, i) => getState(i === myI ? myDA : (p.avail[date] || {}), date, h));
+    const avails = ppl.map((p, i) => getState(i === myI ? myDA : (p.avail[date] || {}), h));
     const cntAvail = avails.filter(s => s === ST_AVAIL).length;
     const cntBusy  = avails.filter(s => s === ST_BUSY).length;
 
@@ -616,10 +616,10 @@ function renderDayPR(date) {
   const personRows = ppl.map((p, i) => {
     const isMe = i === myI, isOther = !isMe;
     const av = isMe ? myDA : (p.avail[date] || {});
-    const cntA = hours.filter(h => getState(av, date, h) === ST_AVAIL).length;
+    const cntA = hours.filter(h => getState(av, h) === ST_AVAIL).length;
 
     const tdHours = hours.map(h => {
-      const st = getState(av, date, h);
+      const st = getState(av, h);
       const cls = 'ci' + (isMe ? ' ed' : ' ro') + (isOther && ME ? ' dim' : '');
       const da  = isMe
         ? ` data-date="${date}" data-hour="${h}" data-col="${i}"`
@@ -645,7 +645,7 @@ function renderDayPR(date) {
 
   // 汇总行（逐列统计）
   const sumTds = hours.map(h => {
-    const avails = ppl.map((p, i) => getState(i === myI ? myDA : (p.avail[date] || {}), date, h));
+    const avails = ppl.map((p, i) => getState(i === myI ? myDA : (p.avail[date] || {}), h));
     const cntAvail = avails.filter(s => s === ST_AVAIL).length;
     const cntBusy  = avails.filter(s => s === ST_BUSY).length;
     return `<td class="td-h">${buildSI(cntAvail, cntBusy, maxP)}</td>`;
@@ -719,7 +719,7 @@ function onTMove(e) {
 
 function startDrag(el) {
   const date = el.dataset.date, h = +el.dataset.hour, col = +el.dataset.col;
-  const cur  = getState(myAvail[date] || {}, date, h);
+  const cur  = getState(myAvail[date] || {}, h);
   const next = (cur + 1) % 3;  // 0→1→2→0（未填→有空→没空→未填）
   drag = { on: true, fillTo: next, col, lastKey: `${date}-${h}` };
   applyCell(date, h, next, el);
@@ -755,7 +755,7 @@ function refreshSummary() {
   getDates().forEach(date => {
     const myDA = ME ? (myAvail[date] || {}) : {};
     getHours().forEach(h => {
-      const avails = ppl.map((p, i) => getState(i === myI ? myDA : (p.avail[date] || {}), date, h));
+      const avails = ppl.map((p, i) => getState(i === myI ? myDA : (p.avail[date] || {}), h));
       const cntAvail = avails.filter(s => s === ST_AVAIL).length;
       const cntBusy  = avails.filter(s => s === ST_BUSY).length;
       // m-tr 模式：更新 .si
@@ -768,7 +768,7 @@ function refreshSummary() {
       if (sumRow) {
         const tds = sumRow.querySelectorAll('td.td-h');
         getHours().forEach((h, idx) => {
-          const avails = ppl.map((p, i) => getState(i === myI ? (myAvail[date] || {}) : (p.avail[date] || {}), date, h));
+          const avails = ppl.map((p, i) => getState(i === myI ? (myAvail[date] || {}) : (p.avail[date] || {}), h));
           const cntA = avails.filter(s => s === ST_AVAIL).length;
           const cntB = avails.filter(s => s === ST_BUSY).length;
           if (tds[idx]) tds[idx].innerHTML = buildSI(cntA, cntB, maxP);
@@ -806,7 +806,7 @@ async function doPoll() {
     if (p.name === ME) return;
     getDates().forEach(date => {
       getHours().forEach(h => {
-        const st = getState(p.avail[date] || {}, date, h);
+        const st = getState(p.avail[date] || {}, h);
         // m-tr 模式格子
         const elTR = document.querySelector(`.ci[data-pi="${idx}"][data-date="${date}"][data-hour="${h}"]`);
         if (elTR) { elTR.setAttribute('style', cellStyle(st, p.color)); elTR.textContent = st === ST_BUSY ? '✕' : ''; }
