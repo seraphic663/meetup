@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>群约小助手</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    :root {
+      --green: #07C160; --gdk: #05A050; --glt: #E8F8F0;
+      --bg: #F2F3F7; --card: #fff; --bdr: #E8E8E8;
+      --t1: #1A1A1A; --t2: #555; --t3: #999;
+      --r: 14px; --sh: 0 2px 12px rgba(0,0,0,.07);
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; background: var(--bg); color: var(--t1); min-height: 100vh; }
+    .hidden { display: none !important; }
+
+    /* Toast */
+    #toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-70px); background: rgba(0,0,0,.82); color: #fff; padding: 10px 22px; border-radius: 99px; font-size: 14px; z-index: 9999; opacity: 0; pointer-events: none; transition: all .25s; white-space: nowrap; max-width: 90vw; text-align: center; }
+    #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+    /* ═══ SETUP ═══ */
+    #setupScreen { display: flex; flex-direction: column; align-items: center; padding: 36px 16px 60px; }
+    .logo-area { text-align: center; margin-bottom: 24px; }
+    .logo-emoji { font-size: 52px; line-height: 1; }
+    .logo-name  { font-size: 24px; font-weight: 800; margin-top: 8px; }
+    .logo-desc  { font-size: 13px; color: var(--t3); margin-top: 4px; line-height: 1.6; }
+
+    .card { background: var(--card); border-radius: var(--r); padding: 20px 18px; width: 100%; max-width: 480px; box-shadow: var(--sh); }
+    .card + .card { margin-top: 12px; }
+    .card-ttl { font-size: 11px; font-weight: 700; color: var(--t3); letter-spacing: .7px; text-transform: uppercase; margin-bottom: 14px; }
+
+    .fg { margin-bottom: 14px; }
+    .fg:last-child { margin-bottom: 0; }
+    .fl { display: block; font-size: 12px; font-weight: 600; color: var(--t2); margin-bottom: 5px; }
+    .fi { width: 100%; padding: 12px 14px; border: 1.5px solid var(--bdr); border-radius: 10px; font-size: 16px; color: var(--t1); background: #FAFAFA; outline: none; transition: border-color .2s; -webkit-appearance: none; appearance: none; }
+    .fi:focus { border-color: var(--green); background: #fff; }
+    .fi-row { display: flex; gap: 10px; }
+    .fi-row .fg { flex: 1; min-width: 0; }
+
+    /* Tag input */
+    .tag-wrap { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; border: 1.5px solid var(--bdr); border-radius: 10px; background: #FAFAFA; min-height: 46px; cursor: text; transition: border-color .2s; }
+    .tag-wrap.focused { border-color: var(--green); background: #fff; }
+    .tag { display: inline-flex; align-items: center; gap: 3px; background: var(--glt); color: var(--gdk); border-radius: 6px; padding: 3px 6px 3px 9px; font-size: 14px; font-weight: 500; }
+    .tag-x { background: none; border: none; color: var(--gdk); font-size: 15px; font-weight: 700; cursor: pointer; padding: 0 2px; line-height: 1; }
+    .tag-inp { border: none; outline: none; background: transparent; font-size: 15px; color: var(--t1); min-width: 80px; flex: 1; height: 28px; }
+    .tag-hint { font-size: 12px; color: var(--t3); margin-top: 4px; }
+
+    /* Buttons */
+    .btn-p { display: block; width: 100%; padding: 14px; background: var(--green); color: #fff; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 14px; -webkit-appearance: none; transition: opacity .15s; }
+    .btn-p:active { opacity: .8; }
+    .btn-s { display: block; width: 100%; padding: 13px; background: #EBEBEB; color: var(--t1); border: none; border-radius: 12px; font-size: 15px; cursor: pointer; margin-top: 8px; -webkit-appearance: none; transition: opacity .15s; }
+    .btn-s:active { opacity: .7; }
+
+    /* ═══ JOIN ═══ */
+    #joinScreen { display: flex; flex-direction: column; align-items: center; padding: 50px 16px 60px; }
+    .ev-card { text-align: center; margin-bottom: 24px; }
+    .ev-emoji { font-size: 44px; }
+    .ev-name  { font-size: 22px; font-weight: 800; margin-top: 8px; }
+    .ev-meta  { font-size: 13px; color: var(--t3); margin-top: 5px; line-height: 1.6; }
+
+    .resume-box { background: var(--glt); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .resume-box .rb-lbl { font-size: 12px; color: var(--t3); margin-bottom: 2px; }
+    .resume-box .rb-name { font-size: 16px; font-weight: 800; color: var(--gdk); }
+    .resume-box .rb-btn { flex-shrink: 0; background: var(--green); color: #fff; border: none; border-radius: 99px; padding: 9px 18px; font-size: 14px; font-weight: 700; cursor: pointer; }
+
+    .chips-wrap { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+    .nchip { padding: 9px 16px; border-radius: 99px; border: 2px solid var(--bdr); background: var(--card); font-size: 14px; font-weight: 500; cursor: pointer; transition: all .15s; user-select: none; }
+    .nchip.active { border-color: var(--green); background: var(--glt); color: var(--gdk); font-weight: 700; }
+    .nchip.done   { border-color: #CCC; background: #F5F5F5; color: var(--t3); cursor: default; }
+    .or-sep { text-align: center; font-size: 12px; color: var(--t3); padding: 6px 0; }
+
+    /* ═══ MAIN ═══ */
+    .app-hdr { position: sticky; top: 0; z-index: 100; background: var(--green); color: #fff; display: flex; align-items: center; gap: 10px; padding: 12px 14px; }
+    .hdr-info { flex: 1; min-width: 0; }
+    .hdr-title { font-size: 17px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .hdr-sub   { font-size: 12px; opacity: .8; margin-top: 2px; }
+    .hdr-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .hdr-btn-alt   { background: rgba(255,255,255,.22); color: #fff; border: none; padding: 8px 12px; border-radius: 99px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .hdr-btn-share { background: rgba(255,255,255,.92); color: var(--green); border: none; padding: 8px 14px; border-radius: 99px; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+
+    /* Live dot */
+    .live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #4ade80; margin-right: 5px; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    .stats-strip { background: var(--card); border-bottom: 1px solid var(--bdr); padding: 10px 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .s-lbl   { font-size: 12px; font-weight: 600; color: var(--t3); white-space: nowrap; }
+    .pbadges { display: flex; gap: 5px; flex-wrap: wrap; }
+    .pbadge  { display: inline-flex; align-items: center; gap: 4px; background: #F0F0F0; border-radius: 99px; padding: 3px 9px 3px 5px; font-size: 12px; }
+    .pbadge.me { background: var(--glt); font-weight: 700; color: var(--gdk); }
+    .pdot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+    .tip { margin: 10px 12px 0; background: #FFFBE6; border-left: 3px solid #F5A623; border-radius: 0 10px 10px 0; padding: 9px 13px; font-size: 13px; color: #7A5500; line-height: 1.7; }
+
+    /* Day section */
+    .day-sec { margin: 12px 12px 0; }
+    .day-hdr { display: flex; align-items: center; gap: 7px; padding: 0 2px 8px; }
+    .day-date { font-size: 18px; font-weight: 800; }
+    .day-wd   { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 99px; background: #EAEAEA; color: var(--t2); }
+    .day-wd.we { background: #FFF0E8; color: #E84D0E; }
+
+    .g-card   { background: var(--card); border-radius: var(--r); overflow: hidden; box-shadow: var(--sh); }
+    .g-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+    /* TABLE: time = rows, people = columns */
+    table.sg { border-collapse: collapse; width: max-content; min-width: 100%; }
+
+    table.sg thead th { font-size: 12px; font-weight: 700; color: var(--t3); border-bottom: 2px solid var(--bdr); height: 48px; text-align: center; }
+    table.sg thead th.th-lbl { position: sticky; left: 0; z-index: 20; background: #FAFAFA; border-right: 2px solid var(--bdr); width: 92px; min-width: 92px; text-align: left; padding: 0 10px; font-size: 11px; }
+    table.sg thead th.th-p   { width: 60px; min-width: 60px; padding: 5px 4px 6px; border-right: 1px solid #F0F0F0; }
+    table.sg thead th.th-p .pname { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 52px; margin: 0 auto; font-size: 12px; }
+    table.sg thead th.th-p .pmark { display: block; width: 7px; height: 7px; border-radius: 50%; margin: 3px auto 0; }
+    table.sg thead th.th-p.is-me .pname { color: var(--green); font-weight: 800; }
+    table.sg thead th.th-sum { width: 54px; min-width: 54px; background: #FAFAFA; border-left: 2px solid var(--bdr); font-size: 11px; }
+
+    table.sg tbody tr { border-bottom: 1px solid #F5F5F5; }
+    table.sg tbody tr:last-child { border-bottom: none; }
+    table.sg tbody td.td-lbl { position: sticky; left: 0; z-index: 10; background: #FAFAFA; border-right: 2px solid var(--bdr); width: 92px; min-width: 92px; height: 52px; padding: 0 8px; font-size: 12px; font-weight: 700; color: var(--t2); white-space: nowrap; line-height: 1.3; }
+    table.sg tbody td.td-lbl small { display: block; font-size: 10px; font-weight: 400; color: var(--t3); }
+    table.sg tbody td.td-c   { width: 60px; height: 52px; padding: 5px; border-right: 1px solid #F5F5F5; }
+    table.sg tbody td.td-sum { width: 54px; height: 52px; padding: 5px; background: #FAFAFA; border-left: 2px solid var(--bdr); }
+
+    .ci { width: 100%; height: 100%; border-radius: 8px; background: #EFF0F2; cursor: pointer; display: flex; align-items: center; justify-content: center; user-select: none; -webkit-user-select: none; touch-action: none; transition: background .08s; }
+    .ci.ro  { cursor: default; }
+    .ci.dim { opacity: .35; }
+    .si { width: 100%; height: 100%; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; background: #F5F5F5; color: #ccc; }
+
+    .pb { height: max(24px, env(safe-area-inset-bottom, 24px)); }
+
+    /* ═══ SHARE OVERLAY ═══ */
+    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.46); z-index: 300; display: flex; align-items: flex-end; opacity: 0; pointer-events: none; transition: opacity .22s; }
+    .overlay.open { opacity: 1; pointer-events: auto; }
+    .sheet { background: #fff; border-radius: 20px 20px 0 0; width: 100%; padding: 20px 18px 44px; transform: translateY(100%); transition: transform .28s ease; }
+    .overlay.open .sheet { transform: translateY(0); }
+    .sh-bar   { width: 40px; height: 4px; background: #DDD; border-radius: 2px; margin: 0 auto 18px; }
+    .sh-title { font-size: 18px; font-weight: 800; margin-bottom: 10px; }
+    .sh-url   { background: #F5F5F5; border-radius: 10px; padding: 12px; font-size: 13px; font-weight: 700; color: var(--t1); word-break: break-all; margin-bottom: 8px; }
+    .sh-note  { font-size: 12px; color: var(--t3); line-height: 1.7; margin-bottom: 14px; }
+  </style>
+</head>
+<body>
+
+<div id="toast"></div>
+
+<!-- ═══════════════ SETUP ═══════════════ -->
+<div id="setupScreen">
+  <div class="logo-area">
+    <div class="logo-emoji">📅</div>
+    <div class="logo-name">群约小助手</div>
+    <div class="logo-desc">发起时间调查，大家打开同一个链接各自填写</div>
+  </div>
+
+  <div class="card">
+    <div class="card-ttl">活动信息</div>
+    <div class="fg">
+      <label class="fl">活动名称</label>
+      <input class="fi" type="text" id="sName" placeholder="三月聚餐、周末球赛…" maxlength="20">
+    </div>
+    <div class="fi-row">
+      <div class="fg">
+        <label class="fl">开始日期</label>
+        <input class="fi" type="date" id="sDateS">
+      </div>
+      <div class="fg">
+        <label class="fl">结束日期</label>
+        <input class="fi" type="date" id="sDateE">
+      </div>
+    </div>
+    <div class="fi-row">
+      <div class="fg">
+        <label class="fl">起始时间</label>
+        <select class="fi" id="sHourS"></select>
+      </div>
+      <div class="fg">
+        <label class="fl">截止时间</label>
+        <select class="fi" id="sHourE"></select>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-ttl">参与者</div>
+    <div class="fg">
+      <label class="fl">你的昵称（发起人）</label>
+      <input class="fi" type="text" id="sMyName" placeholder="你叫什么？" maxlength="10">
+    </div>
+    <div class="fg">
+      <label class="fl">其他参与者昵称 <span style="color:var(--t3);font-weight:400">（可选）</span></label>
+      <div class="tag-wrap" id="tagWrap" onclick="focusTagInput(event)">
+        <input type="text" class="tag-inp" id="tagInp" placeholder="输入昵称，按回车添加" maxlength="10">
+      </div>
+      <div class="tag-hint">💡 预设名单后，群友打开链接点自己名字就行</div>
+    </div>
+  </div>
+
+  <button class="btn-p" style="width:calc(100% - 32px);max-width:480px" onclick="createSession()">创建调查 →</button>
+</div>
+
+<!-- ═══════════════ JOIN ═══════════════ -->
+<div id="joinScreen" class="hidden" style="display:flex;flex-direction:column;align-items:center;padding:50px 16px 60px">
+  <div class="ev-card">
+    <div class="ev-emoji">🗓️</div>
+    <div class="ev-name" id="jEvName"></div>
+    <div class="ev-meta" id="jEvMeta"></div>
+  </div>
+
+  <div class="card" style="max-width:480px">
+    <!-- 上次填过 -->
+    <div id="jResumeArea" class="hidden">
+      <div class="resume-box">
+        <div>
+          <div class="rb-lbl">上次在此设备填过</div>
+          <div class="rb-name" id="jResumeName"></div>
+        </div>
+        <button class="rb-btn" onclick="resumeSession()">继续 →</button>
+      </div>
+      <div class="or-sep">— 不是你？选择或输入你的名字 —</div>
+    </div>
+
+    <!-- 预设名单 -->
+    <div id="jChipsArea" class="hidden">
+      <div class="fl" style="margin-bottom:8px">选择你的名字</div>
+      <div class="chips-wrap" id="jChips"></div>
+      <div class="or-sep" id="jOrSep">— 或输入 —</div>
+    </div>
+
+    <div class="fg">
+      <label class="fl" id="jNameLabel">你叫什么？</label>
+      <input class="fi" type="text" id="jName" placeholder="输入你的昵称" maxlength="10">
+    </div>
+    <button class="btn-p" onclick="joinSession()">进入填写 →</button>
+    <button class="btn-s" onclick="viewOnly()">👀 仅查看结果</button>
+  </div>
+</div>
+
+<!-- ═══════════════ MAIN ═══════════════ -->
+<div id="mainScreen" class="hidden">
+  <div class="app-hdr">
+    <div class="hdr-info">
+      <div class="hdr-title" id="mTitle"></div>
+      <div class="hdr-sub" id="mSub"></div>
+    </div>
+    <div class="hdr-actions">
+      <button class="hdr-btn-alt"   onclick="switchUser()">换人 🔄</button>
+      <button class="hdr-btn-share" onclick="openShare()">分享 📤</button>
+    </div>
+  </div>
+
+  <div class="stats-strip" id="statsStrip"></div>
+  <div class="tip hidden" id="tipBox"></div>
+  <div id="gridContent"></div>
+  <div class="pb"></div>
+</div>
+
+<!-- ═══════════════ SHARE ═══════════════ -->
+<div class="overlay" id="shareOverlay" onclick="overlayBg(event)">
+  <div class="sheet">
+    <div class="sh-bar"></div>
+    <div class="sh-title">📤 分享链接给群友</div>
+    <div class="sh-url" id="shUrl"></div>
+    <div class="sh-note">
+      每个人打开这个链接，选自己的名字，各自填写有空时段。<br>
+      数据自动保存，所有人实时看到最新结果。<br>
+      <span id="shPeopleStat"></span>
+    </div>
+    <button class="btn-p" onclick="copyUrl()">📋 复制链接</button>
+    <button class="btn-s" onclick="closeShare()">关闭</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const COLORS = ['#FF6B35','#4ECDC4','#45B7D1','#9B59B6','#E67E22','#27AE60','#E91E63','#3498DB','#F39C12','#1ABC9C','#E74C3C','#16A085'];
+const WD = ['周日','周一','周二','周三','周四','周五','周六'];
+
+let SID     = null;   // session id
+let S       = null;   // session data from server
+let ME      = null;   // my name (null = view-only)
+let myAvail = {};     // local source of truth for my data
+let drag    = { on: false, fill: true, col: -1, lastH: -1 };
+let pollT   = null;
+let saveT   = null;
+
+/* ─── API ─── */
+async function api(url, method = 'GET', body = null) {
+  const opts = { method, headers: {} };
+  if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  try {
+    const r = await fetch(url, opts);
+    if (!r.ok) return null;
+    return await r.json();
+  } catch(e) { return null; }
+}
+
+/* ─── Boot ─── */
+document.addEventListener('mouseup',  endDrag);
+document.addEventListener('touchend', endDrag);
+
+(async function init() {
+  SID = new URLSearchParams(location.search).get('s');
+  if (SID) {
+    S = await api(`/api/session/${SID}`);
+    if (!S) { toast('❌ 会话不存在或已过期'); setTimeout(() => location.href = '/', 2000); return; }
+    renderJoin();
+  } else {
+    initForm();
+    showScr('setupScreen');
+  }
+})();
+
+/* ─── Setup form init ─── */
+function initForm() {
+  const selS = $('sHourS'), selE = $('sHourE');
+  for (let h = 0; h <= 23; h++) {
+    [selS, selE].forEach(sel => {
+      const o = document.createElement('option');
+      o.value = h; o.textContent = pad(h) + ':00'; sel.appendChild(o);
+    });
+  }
+  selS.value = 9; selE.value = 21;
+  const now = new Date(), later = new Date(now);
+  later.setDate(now.getDate() + 3);
+  $('sDateS').value = dfmt(now);
+  $('sDateE').value = dfmt(later);
+  const inp = $('tagInp');
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(); }
+    if (e.key === 'Backspace' && !e.target.value) removeLastTag();
+  });
+  inp.addEventListener('focus', () => $('tagWrap').classList.add('focused'));
+  inp.addEventListener('blur',  () => $('tagWrap').classList.remove('focused'));
+}
+
+/* ─── Create session ─── */
+async function createSession() {
+  const name   = $('sName').value.trim();
+  const dateS  = $('sDateS').value;
+  const dateE  = $('sDateE').value;
+  const hourS  = +$('sHourS').value;
+  const hourE  = +$('sHourE').value;
+  const myName = $('sMyName').value.trim();
+  if (!name)            return toast('请输入活动名称');
+  if (!dateS || !dateE) return toast('请选择日期');
+  if (dateS > dateE)    return toast('开始日期不能晚于结束日期');
+  if (hourS >= hourE)   return toast('截止时间须晚于起始时间');
+  if (!myName)          return toast('请输入你的昵称（发起人）');
+  if (dayDiff(dateS, dateE) > 14) return toast('日期范围最多14天');
+
+  $('setupScreen').querySelector('.btn-p').textContent = '创建中…';
+  const r = await api('/api/session', 'POST', { name, dateS, dateE, hourS, hourE, expectedNames: [...tags] });
+  if (!r?.id) { $('setupScreen').querySelector('.btn-p').textContent = '创建调查 →'; return toast('创建失败，请重试'); }
+  location.href = `/?s=${r.id}`;
+}
+
+/* ─── Tag input ─── */
+let tags = [];
+function focusTagInput(e) { if (!e.target.classList.contains('tag-x')) $('tagInp').focus(); }
+function addTag() {
+  const v = $('tagInp').value.trim();
+  if (!v || tags.includes(v)) return;
+  if (tags.length >= 12) return toast('最多12人');
+  tags.push(v); $('tagInp').value = ''; renderTags();
+}
+function removeTag(name) { tags = tags.filter(t => t !== name); renderTags(); }
+function removeLastTag()  { if (tags.length) { tags.pop(); renderTags(); } }
+function renderTags() {
+  $('tagWrap').querySelectorAll('.tag').forEach(t => t.remove());
+  [...tags].reverse().forEach(t => {
+    const div = document.createElement('div');
+    div.className = 'tag';
+    div.innerHTML = `${esc(t)}<button class="tag-x" onclick="removeTag('${esc(t)}')" type="button">×</button>`;
+    $('tagWrap').insertBefore(div, $('tagWrap').firstChild);
+  });
+}
+
+/* ─── Join screen ─── */
+let jPick = null;
+
+function renderJoin() {
+  $('jEvName').textContent = S.name;
+  $('jEvMeta').textContent = fmtRange() + (S.participants.length ? ` · 已有 ${S.participants.length} 人填写` : ' · 快来第一个填！');
+
+  // Resume
+  const saved = localStorage.getItem('mqa_' + SID);
+  const savedP = saved && S.participants.find(p => p.name === saved);
+  if (savedP) {
+    $('jResumeName').textContent = saved;
+    $('jResumeArea').classList.remove('hidden');
+  } else {
+    $('jResumeArea').classList.add('hidden');
+  }
+
+  // Name chips (expected names, excluding already-filled if resume shown)
+  const exp = S.expectedNames || [];
+  if (exp.length) {
+    $('jChipsArea').classList.remove('hidden');
+    $('jChips').innerHTML = exp.map(n => {
+      const filled = S.participants.find(p => p.name === n);
+      return `<div class="nchip${filled ? ' done' : ''}" onclick="${filled ? '' : `pickChip(this,'${esc(n)}')`}">${esc(n)}${filled ? ' ✓' : ''}</div>`;
+    }).join('');
+  } else {
+    $('jChipsArea').classList.add('hidden');
+  }
+
+  jPick = null; $('jName').value = '';
+  showScr('joinScreen');
+}
+
+function pickChip(el, name) {
+  document.querySelectorAll('.nchip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  jPick = name; $('jName').value = name;
+}
+
+async function joinSession() {
+  const name = ($('jName').value.trim() || jPick || '').trim();
+  if (!name) return toast('请选择或输入你的昵称');
+  const existingP = S.participants.find(p => p.name === name);
+  const color = existingP ? existingP.color : COLORS[S.participants.length % COLORS.length];
+  const newS = await api(`/api/session/${SID}/join`, 'POST', { name, color });
+  if (!newS) return toast('加入失败，请重试');
+  S = newS;
+  ME = name;
+  const meP = S.participants.find(p => p.name === ME);
+  myAvail = meP?.avail ? JSON.parse(JSON.stringify(meP.avail)) : {};
+  localStorage.setItem('mqa_' + SID, ME);
+  renderMain(); showScr('mainScreen'); startPoll();
+  toast(existingP ? `欢迎回来，${ME} 👋` : `点击或上下拖动来选择你有空的时段 ✌️`);
+}
+
+async function resumeSession() {
+  const saved = localStorage.getItem('mqa_' + SID);
+  if (!saved) return;
+  $('jName').value = saved;
+  await joinSession();
+}
+
+function viewOnly() {
+  ME = null; myAvail = {};
+  renderMain(); showScr('mainScreen'); startPoll();
+}
+
+function switchUser() {
+  stopPoll(); ME = null; myAvail = {};
+  renderJoin();
+}
+
+/* ─── Main screen ─── */
+function renderMain() {
+  $('mTitle').textContent = S.name;
+  $('mSub').innerHTML = `<span class="live-dot"></span>${fmtRange()}${ME ? ' · 点击时段填写' : ' · 查看模式'}`;
+  renderBadges();
+  if (ME) {
+    $('tipBox').textContent = '💡 选好后自动保存。点「分享 📤」把链接发到群，大家各自打开各自填，互不影响。';
+    $('tipBox').classList.remove('hidden');
+  } else {
+    $('tipBox').classList.add('hidden');
+  }
+  renderGrid();
+}
+
+function renderBadges() {
+  $('statsStrip').innerHTML =
+    `<span class="s-lbl">参与者（${S.participants.length}人）：</span><div class="pbadges">` +
+    S.participants.map(p => {
+      const isMe = p.name === ME;
+      return `<span class="pbadge${isMe ? ' me' : ''}">
+        <span class="pdot" style="background:${p.color}"></span>${esc(p.name)}${isMe ? '（我）' : ''}
+      </span>`;
+    }).join('') + `</div>`;
+}
+
+/* ─── Grid ─── */
+function renderGrid() {
+  const sc = window.scrollY;
+  $('gridContent').innerHTML = getDates().map(d => renderDay(d)).join('');
+  attachEvents();
+  window.scrollTo(0, sc);
+}
+
+function renderDay(date) {
+  const d    = new Date(date + 'T00:00:00');
+  const wd   = WD[d.getDay()], isWe = d.getDay() === 0 || d.getDay() === 6;
+  const mm   = d.getMonth() + 1, dd = d.getDate();
+  const ppl  = S.participants;
+  const myI  = ME ? ppl.findIndex(p => p.name === ME) : -1;
+  const hours = getHours();
+  const maxP  = ppl.length;
+
+  const thead = `<thead><tr>
+    <th class="th-lbl">时段</th>
+    ${ppl.map((p, i) => `<th class="th-p${i === myI ? ' is-me' : ''}">
+      <span class="pname">${esc(p.name)}${i === myI ? ' ✏' : ''}</span>
+      <span class="pmark" style="background:${p.color}"></span>
+    </th>`).join('')}
+    <th class="th-sum">汇总</th>
+  </tr></thead>`;
+
+  const myDA = ME ? (myAvail[date] || []) : [];
+  const rows = hours.map(h => {
+    const cnt = ppl.filter((p, i) => {
+      const av = i === myI ? myDA : (p.avail[date] || []);
+      return av.includes(h);
+    }).length;
+
+    const cells = ppl.map((p, i) => {
+      const isMe = i === myI;
+      const on   = isMe ? myDA.includes(h) : (p.avail[date] || []).includes(h);
+      const bg   = on ? p.color : '#EFF0F2';
+      const cls  = 'ci' + (isMe ? ' ed' : ' ro') + (!isMe && ME ? ' dim' : '');
+      const da   = isMe
+        ? ` data-date="${date}" data-hour="${h}" data-col="${i}"`
+        : ` data-pi="${i}" data-date="${date}" data-hour="${h}"`;
+      return `<td class="td-c"><div class="${cls}" style="background:${bg}"${da}></div></td>`;
+    }).join('');
+
+    let siBg = '#F5F5F5', siCol = '#CCC', siTxt = '';
+    if (cnt > 0) {
+      const r = cnt / maxP;
+      siBg  = lerp('#C2EFD4', '#07C160', r);
+      siCol = r > 0.55 ? '#fff' : '#065C30';
+      siTxt = `${cnt}/${maxP}`;
+    }
+    return `<tr data-date="${date}" data-h="${h}">
+      <td class="td-lbl">${pad(h)}:00<small>— ${pad(h + 1)}:00</small></td>
+      ${cells}
+      <td class="td-sum"><div class="si" style="background:${siBg};color:${siCol}">${siTxt}</div></td>
+    </tr>`;
+  }).join('');
+
+  return `<div class="day-sec">
+    <div class="day-hdr">
+      <span class="day-date">${mm}月${dd}日</span>
+      <span class="day-wd${isWe ? ' we' : ''}">${wd}${isWe ? ' 🎉' : ''}</span>
+    </div>
+    <div class="g-card"><div class="g-scroll">
+      <table class="sg" data-date="${date}">${thead}<tbody>${rows}</tbody></table>
+    </div></div>
+  </div>`;
+}
+
+/* ─── Drag ─── */
+function attachEvents() {
+  if (!ME) return;
+  document.querySelectorAll('.ci.ed').forEach(el => {
+    el.addEventListener('mousedown',  onDown,  { passive: false });
+    el.addEventListener('mouseenter', onEnter);
+    el.addEventListener('touchstart', onTStart, { passive: false });
+    el.addEventListener('touchmove',  onTMove,  { passive: false });
+  });
+}
+
+function onDown(e)  { e.preventDefault(); startDrag(e.currentTarget); }
+function onTStart(e){ e.preventDefault(); startDrag(e.currentTarget); }
+function onEnter(e) {
+  if (!drag.on || +e.currentTarget.dataset.col !== drag.col) return;
+  const h = +e.currentTarget.dataset.hour;
+  if (h === drag.lastH) return;
+  drag.lastH = h;
+  applyCell(e.currentTarget.dataset.date, h, drag.fill, e.currentTarget);
+}
+function onTMove(e) {
+  if (!drag.on) return; e.preventDefault();
+  const el = document.elementFromPoint(e.touches[0].clientX, e.touches[0].clientY)?.closest('.ci.ed');
+  if (!el || +el.dataset.col !== drag.col) return;
+  const h = +el.dataset.hour;
+  if (h === drag.lastH) return;
+  drag.lastH = h;
+  applyCell(el.dataset.date, h, drag.fill, el);
+}
+function startDrag(el) {
+  const date = el.dataset.date, h = +el.dataset.hour, col = +el.dataset.col;
+  const on = (myAvail[date] || []).includes(h);
+  drag = { on: true, fill: !on, col, lastH: h };
+  applyCell(date, h, !on, el);
+}
+function applyCell(date, hour, fill, el) {
+  if (!myAvail[date]) myAvail[date] = [];
+  const arr = myAvail[date], idx = arr.indexOf(hour);
+  if (fill  && idx === -1) arr.push(hour);
+  if (!fill && idx !== -1) arr.splice(idx, 1);
+  const me = S.participants.find(p => p.name === ME);
+  if (el) el.style.background = fill ? (me?.color || '#07C160') : '#EFF0F2';
+}
+function endDrag() {
+  if (!drag.on) return;
+  drag.on = false;
+  // Update S with my local avail for summary
+  const meP = S.participants.find(p => p.name === ME);
+  if (meP) meP.avail = JSON.parse(JSON.stringify(myAvail));
+  refreshSummary();
+  // Debounced save
+  clearTimeout(saveT);
+  saveT = setTimeout(saveAvail, 400);
+}
+async function saveAvail() {
+  if (!ME || !SID) return;
+  await api(`/api/session/${SID}/avail`, 'PUT', { name: ME, avail: myAvail });
+}
+
+function refreshSummary() {
+  const maxP = S.participants.length;
+  const myI  = S.participants.findIndex(p => p.name === ME);
+  getDates().forEach(date => {
+    const myDA = ME ? (myAvail[date] || []) : [];
+    getHours().forEach(h => {
+      const si = document.querySelector(`tr[data-date="${date}"][data-h="${h}"] .si`);
+      if (!si) return;
+      const cnt = S.participants.filter((p, i) => {
+        const av = i === myI ? myDA : (p.avail[date] || []);
+        return av.includes(h);
+      }).length;
+      if (!cnt) { si.style.background = '#F5F5F5'; si.style.color = '#CCC'; si.textContent = ''; return; }
+      const r = cnt / maxP;
+      si.style.background = lerp('#C2EFD4', '#07C160', r);
+      si.style.color = r > 0.55 ? '#fff' : '#065C30';
+      si.textContent = `${cnt}/${maxP}`;
+    });
+  });
+}
+
+/* ─── Polling (real-time updates) ─── */
+function startPoll() { stopPoll(); pollT = setInterval(doPoll, 3000); }
+function stopPoll()  { clearInterval(pollT); pollT = null; }
+
+async function doPoll() {
+  if (drag.on) return;
+  const newS = await api(`/api/session/${SID}`);
+  if (!newS) return;
+
+  const prevCount = S.participants.length;
+
+  // Merge: update others, keep my local avail
+  newS.participants.forEach(np => {
+    if (np.name === ME) return;
+    const ex = S.participants.find(p => p.name === np.name);
+    if (ex) { ex.avail = np.avail; }
+    else    { S.participants.push({ ...np }); }
+  });
+
+  if (S.participants.length > prevCount) {
+    // New person joined — full re-render needed (new column)
+    toast(`${S.participants[S.participants.length - 1].name} 加入了 🎉`);
+    renderBadges(); renderGrid();
+    return;
+  }
+
+  // Update other participants' cells in DOM (no re-render)
+  newS.participants.forEach(np => {
+    if (np.name === ME) return;
+    const idx = S.participants.findIndex(p => p.name === np.name);
+    if (idx < 0) return;
+    getDates().forEach(date => {
+      getHours().forEach(h => {
+        const el = document.querySelector(`.ci[data-pi="${idx}"][data-date="${date}"][data-hour="${h}"]`);
+        if (!el) return;
+        const on = (np.avail[date] || []).includes(h);
+        el.style.background = on ? np.color : '#EFF0F2';
+      });
+    });
+  });
+  refreshSummary();
+}
+
+/* ─── Share ─── */
+function openShare() {
+  $('shUrl').textContent = location.href;
+  const n = S.participants.length;
+  $('shPeopleStat').textContent = `当前已有 ${n} 人填写数据。`;
+  $('shareOverlay').classList.add('open');
+}
+function closeShare() { $('shareOverlay').classList.remove('open'); }
+function overlayBg(e) { if (e.target === $('shareOverlay')) closeShare(); }
+function copyUrl() {
+  const url = location.href;
+  const done = () => { toast('已复制 🎉  发到群里吧！'); closeShare(); };
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(url).then(done).catch(() => fbCopy(url, done));
+  else fbCopy(url, done);
+}
+function fbCopy(url, cb) {
+  const ta = Object.assign(document.createElement('textarea'), { value: url });
+  ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;width:1px;height:1px';
+  document.body.appendChild(ta); ta.focus(); ta.select();
+  try { document.execCommand('copy'); cb(); } catch(_) { toast('请长按链接手动复制'); }
+  ta.remove();
+}
+
+/* ─── Helpers ─── */
+function getDates() {
+  const out = [], d = new Date(S.dateS + 'T00:00:00'), e = new Date(S.dateE + 'T00:00:00');
+  while (d <= e) { out.push(dfmt(d)); d.setDate(d.getDate() + 1); }
+  return out;
+}
+function getHours() { const h = []; for (let i = S.hourS; i < S.hourE; i++) h.push(i); return h; }
+function dfmt(d)    { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function fmtRange() { return S.dateS.slice(5).replace('-','月') + '日 — ' + S.dateE.slice(5).replace('-','月') + '日'; }
+function dayDiff(a, b) { return (new Date(b) - new Date(a)) / 86400000; }
+function pad(n)     { return String(n).padStart(2, '0'); }
+function $(id)      { return document.getElementById(id); }
+function esc(s)     { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function lerp(h1, h2, t) {
+  const p = h => [1,3,5].map(i => parseInt(h.slice(i,i+2),16));
+  const [r1,g1,b1] = p(h1), [r2,g2,b2] = p(h2);
+  return `rgb(${~~(r1+(r2-r1)*t)},${~~(g1+(g2-g1)*t)},${~~(b1+(b2-b1)*t)})`;
+}
+function showScr(id) {
+  ['setupScreen','joinScreen','mainScreen'].forEach(s => $(s).classList.toggle('hidden', s !== id));
+}
+let _tt;
+function toast(msg) {
+  const el = $('toast'); el.textContent = msg; el.classList.add('show');
+  clearTimeout(_tt); _tt = setTimeout(() => el.classList.remove('show'), 2800);
+}
+</script>
+</body>
+</html>

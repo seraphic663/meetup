@@ -1,0 +1,6 @@
+sessions.db
+sessions/
+cloudflared.exe
+__pycache__/
+*.pyc
+.env
