@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """群约小助手 - 服务器（SQLite 存储，本地/云部署均可）"""
 from flask import Flask, request, jsonify, send_from_directory
-import json, os, time, sqlite3, contextlib
+import json, os, time, sqlite3, contextlib, requests
 
 app = Flask(__name__)
 BASE = os.path.dirname(os.path.abspath(__file__))
 
 # 数据库路径：优先用环境变量（云部署挂载目录），否则本地
-DB_PATH = os.environ.get('DB_PATH', os.path.join(BASE, 'sessions.db'))
+DB_PATH = os.environ.get('DB_PATH', os.path.join(BASE, 'sessions', 'sessions.db'))
+
+# DeepSeek API 配置
+DEEPSEEK_API_KEY = os.environ.get('DEEPSEEK_API_KEY', 'sk-b68c113c7f6e47f4b8440112db103af0')
+DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions'
 
 # ── 数据库初始化 ─────────────────────────────────────────
 def get_db():
@@ -16,6 +20,7 @@ def get_db():
     return conn
 
 def init_db():
+    os.makedirs(os.path.dirname(DB_PATH) or '.', exist_ok=True)
     with get_db() as db:
         db.execute('''CREATE TABLE IF NOT EXISTS sessions (
             id   TEXT PRIMARY KEY,
@@ -43,6 +48,108 @@ def _save(sid, d):
         db.execute('INSERT OR REPLACE INTO sessions(id,data,ts) VALUES(?,?,?)',
                    (sid, js, int(time.time())))
         db.commit()
+
+# ── AI 总结生成 ─────────────────────────────────────────
+def generate_ai_summary(session_data):
+    """调用 DeepSeek API 生成智能总结"""
+    if not DEEPSEEK_API_KEY:
+        return "未配置 DeepSeek API 密钥"
+    
+    # 准备数据
+    name = session_data.get('name', '时间调查')
+    participants = session_data.get('participants', [])
+    dateS = session_data.get('dateS', '')
+    dateE = session_data.get('dateE', '')
+    hourS = session_data.get('hourS', 9)
+    hourE = session_data.get('hourE', 21)
+    
+    # 统计数据
+    stats_lines = [f"## 📊 调查信息\n"]
+    stats_lines.append(f"- 活动：{name}")
+    stats_lines.append(f"- 日期：{dateS} 至 {dateE}")
+    stats_lines.append(f"- 时段：{hourS}:00 - {hourE}:00")
+    stats_lines.append(f"- 参与人数：{len(participants)} 人\n")
+    
+    # 时段统计
+    time_slots = {}
+    for hour in range(hourS, hourE):
+        avail_count = 0
+        busy_count = 0
+        for p in participants:
+            avail = p.get('avail', {})
+            for date, hours in avail.items():
+                if str(hour) in hours:
+                    state = hours[str(hour)]
+                    if state == 1:
+                        avail_count += 1
+                    elif state == 2:
+                        busy_count += 1
+        if avail_count > 0 or busy_count > 0:
+            time_slots[f"{hour:02d}:00"] = (avail_count, busy_count)
+    
+    if time_slots:
+        stats_lines.append("## ⏰ 时段分析")
+        best_slot = max(time_slots.items(), key=lambda x: x[1][0])
+        stats_lines.append(f"- 最优时段：{best_slot[0]}（{best_slot[1][0]} 人有空，{best_slot[1][1]} 人没空）")
+        
+        # 列举其他热门时段
+        hot_slots = sorted(time_slots.items(), key=lambda x: x[1][0], reverse=True)[:3]
+        if len(hot_slots) > 1:
+            stats_lines.append("- 备选时段：")
+            for slot, (avail, busy) in hot_slots[1:]:
+                stats_lines.append(f"  - {slot}（{avail} 人有空）")
+    
+    # 人员统计
+    stats_lines.append("\n## 👥 人员统计")
+    for p in participants:
+        avail = p.get('avail', {})
+        avail_hours = 0
+        for date, hours in avail.items():
+            for h, state in hours.items():
+                if state == 1:
+                    avail_hours += 1
+        pname = p.get('name', '未知')
+        if avail_hours > 0:
+            stats_lines.append(f"- {pname}：{avail_hours} 个时段有空")
+        else:
+            stats_lines.append(f"- {pname}：未填写")
+    
+    # 提示词
+    prompt = f"""基于以下调查统计，用 markdown 格式生成简洁的时间选择建议。
+    
+{chr(10).join(stats_lines)}
+
+请提供：
+1. 最优时间选择及理由（2-3 句）
+2. 如果最优时段有人冲突，给出备选方案
+3. 参与者建议（如哪些人时间冲突，可能需要另外协商）
+
+要求简洁、actionable，用中文回复。"""
+    
+    try:
+        resp = requests.post(
+            DEEPSEEK_API_URL,
+            headers={
+                'Authorization': f'Bearer {DEEPSEEK_API_KEY}',
+                'Content-Type': 'application/json'
+            },
+            json={
+                'model': 'deepseek-chat',
+                'messages': [{'role': 'user', 'content': prompt}],
+                'temperature': 0.7,
+                'max_tokens': 500
+            },
+            timeout=10
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get('choices'):
+                return data['choices'][0]['message']['content']
+        return f"API 返回错误：{resp.status_code}"
+    except requests.exceptions.Timeout:
+        return "⏱️ 请求超时，请稍后重试"
+    except Exception as e:
+        return f"🚫 生成失败：{str(e)}"
 
 # ── 路由 ─────────────────────────────────────────────────
 @app.route('/')
@@ -94,6 +201,14 @@ def avail(sid):
     p['avail'] = b.get('avail', {})
     _save(sid, s)
     return jsonify({'ok': True})
+
+@app.route('/api/session/<sid>/summary', methods=['GET'])
+def summary(sid):
+    """生成 AI 智能总结"""
+    s = _load(sid)
+    if not s: return jsonify({'error': 'not found'}), 404
+    summary_text = generate_ai_summary(s)
+    return jsonify({'summary': summary_text})
 
 if __name__ == '__main__':
     import socket
