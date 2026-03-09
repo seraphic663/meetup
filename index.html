@@ -21,6 +21,23 @@
     #toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-70px); background: rgba(0,0,0,.82); color: #fff; padding: 10px 22px; border-radius: 99px; font-size: 14px; z-index: 9999; opacity: 0; pointer-events: none; transition: all .25s; white-space: nowrap; max-width: 90vw; text-align: center; }
     #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
 
+    /* ═══ HOME SCREEN ═══ */
+    #homeScreen { display: flex; flex-direction: column; align-items: center; padding: 60px 16px 60px; }
+    .home-logo { text-align: center; margin-bottom: 40px; }
+    .home-emoji { font-size: 64px; line-height: 1; }
+    .home-title { font-size: 28px; font-weight: 900; margin-top: 12px; color: var(--t1); }
+    .home-desc { font-size: 14px; color: var(--t3); margin-top: 6px; }
+
+    .home-cards { width: 100%; max-width: 480px; }
+    .hc { background: var(--card); border-radius: var(--r); padding: 20px 18px; margin-bottom: 14px; cursor: pointer; transition: all .2s; box-shadow: var(--sh); }
+    .hc:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,.12); }
+    .hc-ico { font-size: 28px; margin-bottom: 8px; }
+    .hc-ttl { font-size: 16px; font-weight: 700; color: var(--t1); margin-bottom: 4px; }
+    .hc-desc { font-size: 12px; color: var(--t3); line-height: 1.6; }
+    .hc-list { display: flex; flex-direction: column; gap: 3px; margin-top: 10px; }
+    .hc-item { font-size: 12px; color: var(--t2); padding: 6px 0; display: flex; align-items: center; gap: 5px; }
+    .hc-item::before { content: '›'; font-weight: 700; color: var(--green); }
+
     /* ═══ SETUP ═══ */
     #setupScreen { display: flex; flex-direction: column; align-items: center; padding: 36px 16px 60px; }
     .logo-area { text-align: center; margin-bottom: 24px; }
@@ -167,6 +184,37 @@
 
     .pb { height: max(24px, env(safe-area-inset-bottom, 24px)); }
 
+    /* ═══ TUTORIAL OVERLAY ═══ */
+    .tutorial-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; display: none; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity .3s; }
+    .tutorial-overlay.show { display: flex; opacity: 1; pointer-events: auto; }
+    .tutorial-box { background: var(--card); border-radius: 16px; padding: 24px; width: 90%; max-width: 320px; box-shadow: 0 8px 32px rgba(0,0,0,.2); animation: slideUp .3s ease; }
+    @keyframes slideUp { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    .tutorial-step { font-size: 28px; line-height: 1; margin-bottom: 12px; }
+    .tutorial-title { font-size: 18px; font-weight: 700; color: var(--t1); margin-bottom: 8px; }
+    .tutorial-desc { font-size: 14px; color: var(--t2); line-height: 1.7; margin-bottom: 18px; }
+    .tutorial-btns { display: flex; gap: 8px; }
+    .tutorial-btn { flex: 1; padding: 11px; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
+    .tutorial-btn-skip { background: #F0F0F0; color: var(--t2); }
+    .tutorial-btn-next { background: var(--green); color: #fff; }
+
+    /* ═══ AI SUMMARY OVERLAY ═══ */
+    .ai-summary-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 400; display: none; align-items: flex-end; opacity: 0; pointer-events: none; transition: opacity .3s; }
+    .ai-summary-overlay.open { display: flex; opacity: 1; pointer-events: auto; }
+    .ai-sheet { background: var(--card); border-radius: 20px 20px 0 0; width: 100%; max-width: 100vw; padding: 20px 18px 44px; transform: translateY(100%); transition: transform .3s ease; }
+    .ai-summary-overlay.open .ai-sheet { transform: translateY(0); }
+    .ai-bar { width: 40px; height: 4px; background: #DDD; border-radius: 2px; margin: 0 auto 16px; }
+    .ai-title { font-size: 18px; font-weight: 800; margin-bottom: 14px; display: flex; align-items: center; gap: 6px; }
+    .ai-loading { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--t2); }
+    .ai-loading::after { content: ''; display: inline-block; width: 4px; height: 4px; border-radius: 50%; background: var(--green); animation: blink .6s infinite; }
+    @keyframes blink { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
+    .ai-content { max-height: 60vh; overflow-y: auto; }
+    .ai-section { margin-bottom: 16px; }
+    .ai-section-title { font-size: 13px; font-weight: 700; color: var(--green); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
+    .ai-section-body { font-size: 13px; line-height: 1.8; color: var(--t2); }
+    .ai-item { display: flex; gap: 8px; margin-bottom: 6px; }
+    .ai-item-emoji { flex-shrink: 0; }
+    .ai-item-text { flex: 1; }
+
     /* ═══ SHARE OVERLAY ═══ */
     .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.46); z-index: 300; display: flex; align-items: flex-end; opacity: 0; pointer-events: none; transition: opacity .22s; }
     .overlay.open { opacity: 1; pointer-events: auto; }
@@ -181,6 +229,56 @@
 <body>
 
 <div id="toast"></div>
+
+<!-- ═══════════════ HOME ═══════════════ -->
+<div id="homeScreen" class="hidden">
+  <div class="home-logo">
+    <div class="home-emoji">📅</div>
+    <div class="home-title">群约小助手</div>
+    <div class="home-desc">随时随地发起时间调查</div>
+  </div>
+  <div class="home-cards">
+    <div class="hc" onclick="goToSetup()">
+      <div class="hc-ico">✏️</div>
+      <div class="hc-ttl">创建新表</div>
+      <div class="hc-desc">发起一个时间调查，邀请大家填写</div>
+      <div class="hc-list">
+        <div class="hc-item">支持自定义日期和时间段</div>
+        <div class="hc-item">预设参与者名单，一键加入</div>
+        <div class="hc-item">实时看到所有人的填写结果</div>
+      </div>
+    </div>
+    <div id="historyCard" class="hc hidden" onclick="goToHistory()">
+      <div class="hc-ico">🕐</div>
+      <div class="hc-ttl">最近表格</div>
+      <div class="hc-desc" id="historyDesc">上次使用的表格们</div>
+      <div class="hc-list" id="historyList"></div>
+    </div>
+    <div class="hc" onclick="showTutorial()">
+      <div class="hc-ico">📖</div>
+      <div class="hc-ttl">如何使用</div>
+      <div class="hc-desc">看一遍 2 分钟快速上手教程</div>
+      <div class="hc-list">
+        <div class="hc-item">三态循环填写</div>
+        <div class="hc-item">布局切换查看</div>
+        <div class="hc-item">一键分享协作</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ HISTORY ═══════════════ -->
+<div id="historyScreen" class="hidden" style="display:flex;flex-direction:column;align-items:center;padding:36px 16px 60px">
+  <div style="text-align:center;margin-bottom:28px;width:100%;max-width:480px">
+    <div style="font-size:40px;margin-bottom:10px">🕐</div>
+    <div style="font-size:22px;font-weight:800;margin-bottom:4px">最近表格</div>
+    <div style="font-size:12px;color:var(--t3)">点击快速重新进入</div>
+  </div>
+  <div class="card" style="max-width:480px">
+    <div id="historyListFull"></div>
+    <button class="btn-s" onclick="goToHome()" style="margin-top:16px">返回首页</button>
+  </div>
+</div>
 
 <!-- ═══════════════ SETUP ═══════════════ -->
 <div id="setupScreen">
@@ -261,6 +359,7 @@
       <div class="hdr-sub"   id="mSub"></div>
     </div>
     <div class="hdr-actions">
+      <button class="hdr-btn-alt"   onclick="goToHome()">🏠 回首页</button>
       <button class="hdr-btn-alt"   onclick="switchUser()">换人 🔄</button>
       <button class="hdr-btn-share" onclick="openShare()">分享 📤</button>
     </div>
@@ -276,6 +375,7 @@
     <div class="tb-sep"></div>
     <button class="tb-btn" id="btnCollapse" onclick="toggleCollapse()">👁 展开他人</button>
     <div class="tb-sep"></div>
+    <button class="tb-btn" id="btnAISummary" onclick="openAISummary()" style="margin-left:auto">✨ AI 总结</button>
     <div class="legend">
       <span class="lg-item"><span class="lg-box empty"></span>未填</span>
       <span class="lg-item"><span class="lg-box avail"></span>有空</span>
@@ -286,6 +386,31 @@
   <div class="tip hidden" id="tipBox"></div>
   <div id="gridContent"></div>
   <div class="pb"></div>
+</div>
+
+<!-- ═══════════════ TUTORIAL ═══════════════ -->
+<div class="tutorial-overlay" id="tutorialOverlay">
+  <div class="tutorial-box">
+    <div class="tutorial-step" id="tutStep">1️⃣</div>
+    <div class="tutorial-title" id="tutTitle"></div>
+    <div class="tutorial-desc" id="tutDesc"></div>
+    <div class="tutorial-btns">
+      <button class="tutorial-btn tutorial-btn-skip" onclick="skipTutorial()">跳过</button>
+      <button class="tutorial-btn tutorial-btn-next" id="tutBtn">下一步</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ AI SUMMARY ═══════════════ -->
+<div class="ai-summary-overlay" id="aiSummaryOverlay" onclick="overlayBgAI(event)">
+  <div class="ai-sheet">
+    <div class="ai-bar"></div>
+    <div class="ai-title">✨ AI 智能总结</div>
+    <div class="ai-content" id="aiContent">
+      <div class="ai-loading">生成中</div>
+    </div>
+    <button class="btn-p" style="margin-top:16px" onclick="closeAISummary()">关闭</button>
+  </div>
 </div>
 
 <!-- ═══════════════ SHARE ═══════════════ -->
@@ -328,6 +453,15 @@ let drag  = { on: false, fillTo: ST_AVAIL, col: -1, lastKey: '' };
 let pollT = null;
 let saveT = null;
 
+// ─── Tutorial ───
+let tutorialStep = 0;
+const tutorialSteps = [
+  { emoji: '1️⃣', title: '点击格子循环切换状态', desc: '绿色 = 有空，红✕ = 没空，灰色 = 未填。每点一次循环切换。' },
+  { emoji: '2️⃣', title: '拖拽批量填写', desc: '按住并上下拖动，快速填充多个相同的时段。' },
+  { emoji: '3️⃣', title: '切换布局查看', desc: '时间为行 vs 人员为行，两种视角全面了解情况。' },
+  { emoji: '4️⃣', title: '分享链接邀请', desc: '复制链接，发微信群，朋友点链接选名字就能填。' }
+];
+
 /* ─── API ─── */
 async function api(url, method = 'GET', body = null) {
   const opts = { method, headers: {} };
@@ -364,6 +498,36 @@ function getState(dayAvail, hour) {
   return (v === ST_AVAIL || v === ST_BUSY) ? Number(v) : ST_EMPTY;
 }
 
+/* ─── History 管理 ─── */
+function saveToHistory(sid, name, dateS, dateE) {
+  let history = JSON.parse(localStorage.getItem('mqa_history') || '[]');
+  history = history.filter(h => h.id !== sid);  // 去重
+  history.unshift({ id: sid, name, dateS, dateE, visited: Date.now() });
+  history = history.slice(0, 5);  // 仅保留最近 5 个
+  localStorage.setItem('mqa_history', JSON.stringify(history));
+  renderHistoryCard();
+}
+
+function loadHistory() {
+  return JSON.parse(localStorage.getItem('mqa_history') || '[]');
+}
+
+function renderHistoryCard() {
+  const hist = loadHistory();
+  if (hist.length > 0) {
+    $('historyCard').classList.remove('hidden');
+    const items = hist.slice(0, 3).map(h => `<div class="hc-item" onclick="goToSession('${h.id}')" style="cursor:pointer">${h.name} (${h.dateS})</div>`).join('');
+    $('historyList').innerHTML = items;
+    $('historyDesc').textContent = `${hist.length} 个最近的表格`;
+  } else {
+    $('historyCard').classList.add('hidden');
+  }
+}
+
+function goToSession(sid) {
+  location.href = `/?s=${sid}`;
+}
+
 /* ─── Boot ─── */
 document.addEventListener('mouseup',  endDrag);
 document.addEventListener('touchend', endDrag);
@@ -376,9 +540,40 @@ document.addEventListener('touchend', endDrag);
     S.participants.forEach(p => { p.avail = normalizeAvail(p.avail); });
     renderJoin();
   } else {
-    initForm(); showScr('setupScreen');
+    initForm(); showHome();
   }
 })();
+
+/* ─── 屏幕导航 ─── */
+function showHome() {
+  renderHistoryCard();
+  showScr('homeScreen');
+}
+
+function goToHome() {
+  stopPoll();
+  if (ME) {
+    const meP = S.participants.find(p => p.name === ME);
+    if (meP) meP.avail = JSON.parse(JSON.stringify(myAvail));
+    saveAvail();
+  }
+  showHome();
+}
+
+function goToSetup() {
+  showScr('setupScreen');
+}
+
+function goToHistory() {
+  const hist = loadHistory();
+  $('historyListFull').innerHTML = hist.length > 0
+    ? hist.map(h => `<div class="fg">
+        <button class="btn-p" style="margin-top:0" onclick="goToSession('${h.id}')">${h.name}</button>
+        <div style="font-size:12px;color:var(--t3);margin-top:6px">${h.dateS} — ${h.dateE}</div>
+      </div>`).join('')
+    : '<div style="text-align:center;color:var(--t3);padding:20px">还没有历史记录呢</div>';
+  showScr('historyScreen');
+}
 
 /* ─── Setup form ─── */
 function initForm() {
@@ -473,6 +668,7 @@ async function joinSession() {
   const meP = S.participants.find(p => p.name === ME);
   myAvail = meP?.avail ? JSON.parse(JSON.stringify(meP.avail)) : {};
   localStorage.setItem('mqa_' + SID, ME);
+  saveToHistory(SID, S.name, S.dateS, S.dateE);
   renderMain(); showScr('mainScreen'); startPoll();
   toast(existingP ? `欢迎回来，${ME} 👋` : `点格子循环：有空（彩色）→ 没空（红✕）→ 未填 ✌️`);
 }
@@ -480,7 +676,7 @@ async function resumeSession() {
   const saved = localStorage.getItem('mqa_' + SID);
   if (!saved) return; $('jName').value = saved; await joinSession();
 }
-function viewOnly() { ME = null; myAvail = {}; renderMain(); showScr('mainScreen'); startPoll(); }
+function viewOnly() { ME = null; myAvail = {}; saveToHistory(SID, S.name, S.dateS, S.dateE); renderMain(); showScr('mainScreen'); startPoll(); }
 function switchUser() { stopPoll(); ME = null; myAvail = {}; renderJoin(); }
 
 /* ─── 布局 & 折叠控制 ─── */
@@ -816,6 +1012,73 @@ async function doPoll() {
   refreshSummary();
 }
 
+/* ─── Tutorial ─── */
+function showTutorial() {
+  tutorialStep = 0;
+  showTutorialStep();
+  $('tutorialOverlay').classList.add('show');
+}
+
+function showTutorialStep() {
+  const step = tutorialSteps[tutorialStep];
+  $('tutStep').textContent = step.emoji;
+  $('tutTitle').textContent = step.title;
+  $('tutDesc').textContent = step.desc;
+  const btn = $('tutBtn');
+  btn.textContent = tutorialStep < tutorialSteps.length - 1 ? '下一步 →' : '开始使用';
+  btn.onclick = () => {
+    if (tutorialStep < tutorialSteps.length - 1) {
+      tutorialStep++;
+      showTutorialStep();
+    } else {
+      skipTutorial();
+    }
+  };
+}
+
+function skipTutorial() {
+  $('tutorialOverlay').classList.remove('show');
+  localStorage.setItem('mqa_tutorial_done', 'true');
+}
+
+/* ─── AI Summary ─── */
+async function openAISummary() {
+  if (!SID) return toast('无法获取会话信息');
+  $('aiSummaryOverlay').classList.add('open');
+  // 调用后端 API
+  const summary = await api(`/api/session/${SID}/summary`);
+  if (summary?.summary) {
+    renderAISummary(summary.summary);
+  } else {
+    $('aiContent').innerHTML = `<div style="color:var(--t3);text-align:center;padding:20px">🚫 生成失败，请稍后重试</div>`;
+  }
+}
+
+function renderAISummary(text) {
+  // 简单的 markdown-like 渲染
+  const lines = text.split('\n');
+  let html = '';
+  lines.forEach(line => {
+    if (line.startsWith('## ')) {
+      html += `<div class="ai-section"><div class="ai-section-title">${esc(line.slice(3))}</div>`;
+    } else if (line.startsWith('- ')) {
+      html += `<div class="ai-item"><div class="ai-item-emoji">•</div><div class="ai-item-text">${esc(line.slice(2))}</div></div>`;
+    } else if (line.trim()) {
+      html += `<div class="ai-item-text">${esc(line)}</div>`;
+    }
+  });
+  html += '</div>';
+  $('aiContent').innerHTML = html;
+}
+
+function closeAISummary() {
+  $('aiSummaryOverlay').classList.remove('open');
+}
+
+function overlayBgAI(e) {
+  if (e.target === $('aiSummaryOverlay')) closeAISummary();
+}
+
 /* ─── Share ─── */
 function openShare() {
   $('shUrl').textContent = location.href;
@@ -856,7 +1119,7 @@ function lerp(h1, h2, t) {
   return `rgb(${~~(r1+(r2-r1)*t)},${~~(g1+(g2-g1)*t)},${~~(b1+(b2-b1)*t)})`;
 }
 function showScr(id) {
-  ['setupScreen','joinScreen','mainScreen'].forEach(s => $(s).classList.toggle('hidden', s !== id));
+  ['homeScreen','historyScreen','setupScreen','joinScreen','mainScreen'].forEach(s => $(s).classList.toggle('hidden', s !== id));
 }
 let _tt;
 function toast(msg) {
