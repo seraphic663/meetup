@@ -10,7 +10,7 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get('DB_PATH', os.path.join(BASE, 'sessions', 'sessions.db'))
 
 # DeepSeek API 配置
-DEEPSEEK_API_KEY = os.environ.get('DEEPSEEK_API_KEY', 'sk-b68c113c7f6e47f4b8440112db103af0')
+DEEPSEEK_API_KEY = os.environ.get('DEEPSEEK_API_KEY', '')
 DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions'
 
 # ── 数据库初始化 ─────────────────────────────────────────
