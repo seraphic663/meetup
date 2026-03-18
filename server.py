@@ -113,6 +113,17 @@ def generate_ai_summary(session_data):
             stats_lines.append(f"- {pname}：{avail_hours} 个时段有空")
         else:
             stats_lines.append(f"- {pname}：未填写")
+
+    # 参与者备注
+    remarks = []
+    for p in participants:
+        note = (p.get('remark') or '').strip()
+        if note:
+            remarks.append((p.get('name', '未知'), note[:200]))
+    if remarks:
+        stats_lines.append("\n## 📝 参与者备注")
+        for n, note in remarks:
+            stats_lines.append(f"- {n}：{note}")
     
     # 提示词
     prompt = f"""基于以下调查统计，用 markdown 格式生成简洁的时间选择建议。
@@ -123,6 +134,7 @@ def generate_ai_summary(session_data):
 1. 最优时间选择及理由（2-3 句）
 2. 如果最优时段有人冲突，给出备选方案
 3. 参与者建议（如哪些人时间冲突，可能需要另外协商）
+4. 若有备注信息，请在建议中纳入约束（如线上参加、晚到、临时不确定）
 
 要求简洁、actionable，用中文回复。"""
     
@@ -156,6 +168,10 @@ def generate_ai_summary(session_data):
 def root():
     return send_from_directory(BASE, 'index.html')
 
+@app.route('/healthz')
+def healthz():
+    return jsonify({'ok': True, 'service': 'meetup'})
+
 @app.route('/api/session', methods=['POST'])
 def create():
     b   = request.get_json(force=True)
@@ -186,7 +202,7 @@ def join(sid):
     if not name: return jsonify({'error': 'name required'}), 400
     plist = s.setdefault('participants', [])
     if not any(p['name'] == name for p in plist):
-        plist.append({'name': name, 'color': b.get('color', '#FF6B35'), 'avail': {}})
+        plist.append({'name': name, 'color': b.get('color', '#FF6B35'), 'avail': {}, 'remark': ''})
         _save(sid, s)
     return jsonify(s)
 
@@ -199,6 +215,8 @@ def avail(sid):
     p    = next((x for x in s.get('participants', []) if x['name'] == name), None)
     if not p: return jsonify({'error': 'participant not found'}), 404
     p['avail'] = b.get('avail', {})
+    if 'remark' in b:
+        p['remark'] = (b.get('remark') or '').strip()[:200]
     _save(sid, s)
     return jsonify({'ok': True})
 

@@ -17,25 +17,28 @@
 
 ---
 
-## 本地运行
+## 3 分钟启动（本地）
 
 **依赖：** Python 3.10+
 
 ```powershell
-pip install flask gunicorn requests
+pip install -r requirements.txt
 
-# 设置 AI Key（可选，不设置则 AI 总结不可用）
+# 可选：仅在当前终端会话注入 API Key（不要写入代码文件）
 $env:DEEPSEEK_API_KEY = "sk-xxxx"
 
 python run.py
 # 访问 http://localhost:5000
+# 健康检查 http://localhost:5000/healthz
 ```
 
-或使用交互式启动脚本（会提示输入 API Key）：
+或直接执行：
 
 ```powershell
 .\启动.ps1
 ```
+
+> 安全建议：API Key 只放在平台环境变量（本地终端 / Railway Variables），不要写入仓库文件、脚本常量或提交记录。
 
 ---
 
@@ -54,7 +57,7 @@ python run.py
 
 | 层 | 技术 |
 |----|------|
-| 前端 | 原生 HTML / CSS / JS，单文件 |
+| 前端 | 原生 HTML / CSS / JS（已拆分） |
 | 后端 | Flask 3 + SQLite |
 | AI | DeepSeek API (`deepseek-chat`) |
 | 部署 | Railway + Gunicorn |
@@ -65,10 +68,27 @@ python run.py
 
 ```
 server.py        # Flask 后端
-index.html       # 前端（单文件）
+index.html       # 页面结构
+styles.css       # 样式
+app.js           # 交互逻辑
 run.py           # 本地启动脚本
-启动.ps1         # Windows 交互式启动
+启动.ps1         # Windows 启动脚本
 Procfile         # Railway 部署配置
 requirements.txt
 sessions/        # SQLite 数据库目录（本地）
 ```
+
+---
+
+## 常见问题（FAQ）
+
+### 1) AI 总结失败怎么办？
+- 先确认 `DEEPSEEK_API_KEY` 已在当前环境注入。
+- 未注入时，核心排期功能仍可正常使用。
+
+### 2) 为什么不能把 API Key 写在项目里？
+- 仓库、日志、截图和历史提交都可能泄露密钥。
+- 推荐使用系统环境变量或部署平台密钥管理。
+
+### 3) 部署后如何判断服务正常？
+- 访问 `/healthz`，返回 `{"ok": true, ...}` 即代表服务可用。

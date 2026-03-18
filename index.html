@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
   <title>群约小助手</title>
-  <style>
+  <link rel="stylesheet" href="/styles.css">
+  <!-- legacy-inline-css-disabled
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     :root {
       --green: #07C160; --gdk: #05A050; --glt: #E8F8F0;
@@ -224,7 +225,7 @@
     .sh-title { font-size: 18px; font-weight: 800; margin-bottom: 10px; }
     .sh-url   { background: #F5F5F5; border-radius: 10px; padding: 12px; font-size: 13px; font-weight: 700; color: var(--t1); word-break: break-all; margin-bottom: 8px; }
     .sh-note  { font-size: 12px; color: var(--t3); line-height: 1.7; margin-bottom: 14px; }
-  </style>
+  -->
 </head>
 <body>
 
@@ -385,6 +386,17 @@
 
   <div class="tip hidden" id="tipBox"></div>
   <div id="gridContent"></div>
+  <div id="remarkCard" class="card remark-card hidden">
+    <div class="card-ttl">个人备注（可选）</div>
+    <div class="fg">
+      <label class="fl" for="myRemark">补充说明（如只能线上参加、某天晚到等）</label>
+      <textarea id="myRemark" class="fi remark-input" maxlength="200" placeholder="输入你的备注，AI 总结会参考"></textarea>
+      <div class="remark-meta">
+        <span id="remarkSaveHint">自动保存</span>
+        <span id="remarkCount">0/200</span>
+      </div>
+    </div>
+  </div>
   <div class="pb"></div>
 </div>
 
@@ -429,7 +441,8 @@
   </div>
 </div>
 
-<script>
+<script src="/app.js"></script>
+<!-- legacy-inline-js-disabled
 'use strict';
 
 const COLORS = ['#FF6B35','#4ECDC4','#45B7D1','#9B59B6','#E67E22','#27AE60','#E91E63','#3498DB','#F39C12','#1ABC9C','#E74C3C','#16A085'];
@@ -1126,6 +1139,6 @@ function toast(msg) {
   const el = $('toast'); el.textContent = msg; el.classList.add('show');
   clearTimeout(_tt); _tt = setTimeout(() => el.classList.remove('show'), 2800);
 }
-</script>
+-->
 </body>
 </html>
