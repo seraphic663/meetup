@@ -27,7 +27,7 @@ Write-Host "📦 检查依赖..." -ForegroundColor Yellow
 $pipList = pip list 2>$null | Out-String
 if ($pipList -notlike "*Flask*") {
     Write-Host "✗ Flask 未安装，正在安装..." -ForegroundColor Yellow
-    pip install flask>=3.0.0 requests>=2.31.0
+    pip install -r requirements.txt
     if ($LASTEXITCODE -ne 0) {
         Write-Host "✗ 安装失败" -ForegroundColor Red
         Read-Host "按 Enter 关闭"
@@ -38,23 +38,15 @@ if ($pipList -notlike "*Flask*") {
     Write-Host "✓ 依赖已安装" -ForegroundColor Green
 }
 
-# 配置 API Key
+# 检查 API Key（只读，不在脚本中采集）
 Write-Host ""
 Write-Host "🔑 API 配置" -ForegroundColor Yellow
-Write-Host "若要启用 AI 总结功能，需要配置 DeepSeek API Key" -ForegroundColor Gray
-Write-Host ""
-
-$choice = Read-Host "是否现在配置 API Key？(y/n，默认 n)"
-if ($choice -eq 'y' -or $choice -eq 'Y') {
-    $apiKey = Read-Host "输入 API Key"
-    if ($apiKey) {
-        $env:DEEPSEEK_API_KEY = $apiKey
-        Write-Host "✓ API Key 已设置（仅本次会话有效）" -ForegroundColor Green
-        Write-Host ""
-        Write-Host "💡 提示：要永久保存，请在系统环境变量中设置 DEEPSEEK_API_KEY" -ForegroundColor Cyan
-    }
+if ([string]::IsNullOrWhiteSpace($env:DEEPSEEK_API_KEY)) {
+    Write-Host "⊘ 未检测到 DEEPSEEK_API_KEY，AI 总结功能将不可用" -ForegroundColor Gray
+    Write-Host "  请在当前终端先执行：`$env:DEEPSEEK_API_KEY = \"sk-xxxx\"" -ForegroundColor Gray
+    Write-Host "  安全建议：仅使用环境变量，不要把密钥写进项目文件" -ForegroundColor Gray
 } else {
-    Write-Host "⊘ 跳过 API Key 配置（可稍后通过环境变量设置）" -ForegroundColor Gray
+    Write-Host "✓ 已检测到 DEEPSEEK_API_KEY（来源：环境变量）" -ForegroundColor Green
 }
 
 # 启动服务器
