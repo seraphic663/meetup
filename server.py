@@ -168,6 +168,14 @@ def generate_ai_summary(session_data):
 def root():
     return send_from_directory(BASE, 'index.html')
 
+@app.route('/styles.css')
+def styles():
+    return send_from_directory(BASE, 'styles.css')
+
+@app.route('/app.js')
+def app_js():
+    return send_from_directory(BASE, 'app.js')
+
 @app.route('/healthz')
 def healthz():
     return jsonify({'ok': True, 'service': 'meetup'})
