@@ -244,7 +244,7 @@ async function joinSession() {
   localStorage.setItem('mqa_' + SID, ME);
   saveToHistory(SID, S.name, S.dateS, S.dateE);
   renderMain(); showScr('mainScreen'); startPoll();
-  toast(existingP ? `欢迎回来，${ME} 👋` : `点格子循环：有空（彩色）→ 没空（红✕）→ 未填 ✌️`);
+  toast(existingP ? `欢迎回来，${ME} 👋` : `点格子循环：有空（彩色）→ 没空（红✕）→ 不确定/未填（灰色） ✌️`);
 }
 async function resumeSession() {
   const saved = localStorage.getItem('mqa_' + SID);
@@ -286,7 +286,7 @@ function renderMain() {
   $('mSub').innerHTML = `<span class="live-dot"></span>${fmtRange()}${ME ? ' · 点击切换状态' : ' · 查看模式'}`;
   renderBadges();
   if (ME) {
-    $('tipBox').textContent = '💡 点格子循环切换：有空（彩色）→ 没空（红✕）→ 未填（灰）。上下拖可批量填。';
+    $('tipBox').textContent = '💡 点格子循环切换：有空（彩色）→ 没空（红✕）→ 不确定/未填（灰色）。上下拖可批量填。';
     $('tipBox').classList.remove('hidden');
   } else { $('tipBox').classList.add('hidden'); }
   renderRemarkCard();
