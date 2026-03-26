@@ -81,6 +81,20 @@
       <div class="fg"><label class="fl">起始时间</label><select class="fi" id="sHourS"></select></div>
       <div class="fg"><label class="fl">截止时间</label><select class="fi" id="sHourE"></select></div>
     </div>
+    <div class="fg">
+      <label class="fl" for="sPrompt">发起人提示语 <span style="color:var(--t3);font-weight:400">（可选）</span></label>
+      <div class="prompt-helper">会展示给所有参与者，建议写清优先级与约束（例如：线下优先、可晚到 15 分钟）</div>
+      <textarea class="fi prompt-input" id="sPrompt" maxlength="200" placeholder="例如：优先线下、尽量安排在工作日晚上"></textarea>
+      <div class="prompt-tools">
+        <div class="prompt-quick">
+          <button class="prompt-chip" type="button" onclick="fillPromptTemplate('工作日晚间优先，线下参加优先。')">工作日晚间优先</button>
+          <button class="prompt-chip" type="button" onclick="fillPromptTemplate('优先线下，无法到场可线上参与。')">线下优先</button>
+          <button class="prompt-chip" type="button" onclick="fillPromptTemplate('请尽量选择连续 1 小时时段，方便安排。')">连续 1 小时</button>
+        </div>
+        <div class="prompt-count" id="sPromptCount">0/200</div>
+      </div>
+      <div class="tag-hint">💡 会展示给所有参与者，帮助大家按统一约束填写</div>
+    </div>
   </div>
   <div class="card">
     <div class="card-ttl">参与者</div>
@@ -107,6 +121,10 @@
     <div class="ev-meta" id="jEvMeta"></div>
   </div>
   <div class="card" style="max-width:480px">
+    <div id="jPromptCard" class="prompt-card hidden">
+      <div class="prompt-title">📌 发起人提示</div>
+      <div class="prompt-body" id="jPromptText"></div>
+    </div>
     <div id="jResumeArea" class="hidden">
       <div class="resume-box">
         <div>
@@ -164,6 +182,10 @@
   </div>
 
   <div class="tip hidden" id="tipBox"></div>
+  <div id="mPromptCard" class="card prompt-card hidden">
+    <div class="prompt-title">📌 发起人提示</div>
+    <div class="prompt-body" id="mPromptText"></div>
+  </div>
   <div id="gridContent"></div>
   <div id="remarkCard" class="card remark-card hidden">
     <div class="card-ttl">个人备注（可选）</div>

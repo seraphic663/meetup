@@ -168,11 +168,18 @@ function initForm() {
   });
   inp.addEventListener('focus', () => $('tagWrap').classList.add('focused'));
   inp.addEventListener('blur',  () => $('tagWrap').classList.remove('focused'));
+
+  const promptInp = $('sPrompt');
+  if (promptInp) {
+    promptInp.addEventListener('input', updatePromptCount);
+    updatePromptCount();
+  }
 }
 
 async function createSession() {
   const name = $('sName').value.trim(), dateS = $('sDateS').value, dateE = $('sDateE').value;
   const hourS = +$('sHourS').value, hourE = +$('sHourE').value, myName = $('sMyName').value.trim();
+  const creatorPrompt = ($('sPrompt')?.value || '').trim().slice(0, 200);
   if (!name)            return toast('请输入活动名称');
   if (!dateS || !dateE) return toast('请选择日期');
   if (dateS > dateE)    return toast('开始日期不能晚于结束日期');
@@ -180,7 +187,7 @@ async function createSession() {
   if (!myName)          return toast('请输入你的昵称（发起人）');
   if (dayDiff(dateS, dateE) > 14) return toast('日期范围最多14天');
   $('setupScreen').querySelector('.btn-p').textContent = '创建中…';
-  const r = await api('/api/session', 'POST', { name, dateS, dateE, hourS, hourE, expectedNames: [...tags] });
+  const r = await api('/api/session', 'POST', { name, dateS, dateE, hourS, hourE, creatorPrompt, expectedNames: [...tags] });
   if (!r?.id) { $('setupScreen').querySelector('.btn-p').textContent = '创建调查 →'; return toast('创建失败，请重试'); }
   location.href = `/?s=${r.id}`;
 }
@@ -205,11 +212,29 @@ function renderTags() {
   });
 }
 
+function updatePromptCount() {
+  const inp = $('sPrompt');
+  const count = $('sPromptCount');
+  if (!inp || !count) return;
+  const val = (inp.value || '').slice(0, 200);
+  if (val !== inp.value) inp.value = val;
+  count.textContent = `${val.length}/200`;
+}
+
+function fillPromptTemplate(text) {
+  const inp = $('sPrompt');
+  if (!inp) return;
+  inp.value = String(text || '').slice(0, 200);
+  updatePromptCount();
+  inp.focus();
+}
+
 /* ─── Join ─── */
 let jPick = null;
 function renderJoin() {
   $('jEvName').textContent = S.name;
   $('jEvMeta').textContent = fmtRange() + (S.participants.length ? ` · 已有 ${S.participants.length} 人填写` : ' · 快来第一个填！');
+  renderCreatorPrompt('join');
   const saved = localStorage.getItem('mqa_' + SID);
   const savedP = saved && S.participants.find(p => p.name === saved);
   if (savedP) { $('jResumeName').textContent = saved; $('jResumeArea').classList.remove('hidden'); }
@@ -285,6 +310,7 @@ function renderMain() {
   $('mTitle').textContent = S.name;
   $('mSub').innerHTML = `<span class="live-dot"></span>${fmtRange()}${ME ? ' · 点击切换状态' : ' · 查看模式'}`;
   renderBadges();
+  renderCreatorPrompt('main');
   if (ME) {
     $('tipBox').textContent = '💡 点格子循环切换：有空（彩色）→ 没空（红✕）→ 不确定/未填（灰色）。上下拖可批量填。';
     $('tipBox').classList.remove('hidden');
@@ -340,6 +366,25 @@ function renderBadges() {
       const isMe = p.name === ME;
       return `<span class="pbadge${isMe ? ' me' : ''}"><span class="pdot" style="background:${p.color}"></span>${esc(p.name)}${isMe ? '（我）' : ''}</span>`;
     }).join('') + `</div>`;
+}
+
+function renderCreatorPrompt(place) {
+  const prompt = (S?.creatorPrompt || '').trim();
+  if (place === 'join') {
+    const card = $('jPromptCard');
+    const text = $('jPromptText');
+    if (!card || !text) return;
+    if (!prompt) { card.classList.add('hidden'); return; }
+    text.textContent = prompt;
+    card.classList.remove('hidden');
+    return;
+  }
+  const card = $('mPromptCard');
+  const text = $('mPromptText');
+  if (!card || !text) return;
+  if (!prompt) { card.classList.add('hidden'); return; }
+  text.textContent = prompt;
+  card.classList.remove('hidden');
 }
 
 /* ─── Grid ─── */

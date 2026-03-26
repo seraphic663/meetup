@@ -33,6 +33,7 @@ class TestApiSmoke(unittest.TestCase):
             "dateE": "2026-03-21",
             "hourS": 9,
             "hourE": 12,
+            "creatorPrompt": "请尽量优先选择线下可参加时段",
             "expectedNames": ["Alice", "Bob"],
         }
         resp = self.client.post("/api/session", json=payload)
@@ -83,6 +84,7 @@ class TestApiSmoke(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertEqual(data.get("id"), sid)
+        self.assertEqual(data.get("creatorPrompt"), "请尽量优先选择线下可参加时段")
         participants = data.get("participants", [])
         self.assertEqual(len(participants), 1)
         self.assertEqual(participants[0].get("name"), "Alice")

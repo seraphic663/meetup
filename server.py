@@ -58,6 +58,7 @@ def generate_ai_summary(session_data):
     # 准备数据
     name = session_data.get('name', '时间调查')
     participants = session_data.get('participants', [])
+    creator_prompt = (session_data.get('creatorPrompt') or '').strip()
     dateS = session_data.get('dateS', '')
     dateE = session_data.get('dateE', '')
     hourS = session_data.get('hourS', 9)
@@ -69,6 +70,8 @@ def generate_ai_summary(session_data):
     stats_lines.append(f"- 日期：{dateS} 至 {dateE}")
     stats_lines.append(f"- 时段：{hourS}:00 - {hourE}:00")
     stats_lines.append(f"- 参与人数：{len(participants)} 人\n")
+    if creator_prompt:
+        stats_lines.append(f"- 发起人提示：{creator_prompt}\n")
     
     # 时段统计
     time_slots = {}
@@ -191,6 +194,7 @@ def create():
         'dateE':         b.get('dateE'),
         'hourS':         int(b.get('hourS', 9)),
         'hourE':         int(b.get('hourE', 21)),
+        'creatorPrompt': (b.get('creatorPrompt') or '').strip()[:200],
         'expectedNames': b.get('expectedNames', []),
         'participants':  []
     })
