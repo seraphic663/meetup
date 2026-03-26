@@ -43,7 +43,7 @@ Write-Host ""
 Write-Host "🔑 API 配置" -ForegroundColor Yellow
 if ([string]::IsNullOrWhiteSpace($env:DEEPSEEK_API_KEY)) {
     Write-Host "⊘ 未检测到 DEEPSEEK_API_KEY，AI 总结功能将不可用" -ForegroundColor Gray
-    Write-Host "  请在当前终端先执行：`$env:DEEPSEEK_API_KEY = \"sk-xxxx\"" -ForegroundColor Gray
+    Write-Host "  请在当前终端先执行：`$env:DEEPSEEK_API_KEY = \"<YOUR_DEEPSEEK_API_KEY>\"" -ForegroundColor Gray
     Write-Host "  安全建议：仅使用环境变量，不要把密钥写进项目文件" -ForegroundColor Gray
 } else {
     Write-Host "✓ 已检测到 DEEPSEEK_API_KEY（来源：环境变量）" -ForegroundColor Green

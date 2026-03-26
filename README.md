@@ -25,7 +25,7 @@
 pip install -r requirements.txt
 
 # 可选：仅在当前终端会话注入 API Key（不要写入代码文件）
-$env:DEEPSEEK_API_KEY = "sk-xxxx"
+$env:DEEPSEEK_API_KEY = "<YOUR_DEEPSEEK_API_KEY>"
 
 python run.py
 # 访问 http://localhost:5000
@@ -39,6 +39,8 @@ python run.py
 ```
 
 > 安全建议：API Key 只放在平台环境变量（本地终端 / Railway Variables），不要写入仓库文件、脚本常量或提交记录。
+
+可参考变量模板：`.env.example`（仅变量名示例，不含真实密钥）。
 
 ---
 
@@ -92,3 +94,55 @@ sessions/        # SQLite 数据库目录（本地）
 
 ### 3) 部署后如何判断服务正常？
 - 访问 `/healthz`，返回 `{"ok": true, ...}` 即代表服务可用。
+
+---
+
+## 发布前检查（门禁）
+
+1. 执行 API 冒烟测试
+
+```powershell
+python -m unittest tests/test_api_smoke.py -v
+```
+
+2. 验证服务探活
+   - 启动后访问 `/healthz`，返回 `200` 且 `ok=true`
+
+3. 验证环境变量
+   - `DEEPSEEK_API_KEY` 已配置（本地/部署平台）
+
+4. 手测关键链路（至少 1 次）
+   - 创建会话
+   - 加入会话
+   - 填写可用性 + 备注
+   - 查看总结（含 AI / 无 AI 两种情况至少其一）
+
+5. 执行安全扫描
+
+```powershell
+python scripts/security_guard.py --workspace --history
+```
+
+---
+
+## 安全收口（A）
+
+已落地：
+- 仅通过环境变量读取 `DEEPSEEK_API_KEY`（不在代码中硬编码）
+- 提供本地扫描脚本：`scripts/security_guard.py`
+- 提供应急与历史治理文档：`docs/安全收口执行清单_2026-03-19.md`
+- 提供提交前防护：`.githooks/pre-commit`
+
+建议先安装提交前钩子：
+
+```powershell
+./scripts/install_git_hooks.ps1
+```
+
+建议每次发布前执行：
+
+```powershell
+python scripts/security_guard.py --workspace --history
+```
+
+若扫描发现历史泄露，按执行清单完成：密钥轮换、历史清理、协作者同步。
