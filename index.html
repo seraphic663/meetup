@@ -2,243 +2,320 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0f766e">
   <title>群约小助手</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
+<div class="site-backdrop" aria-hidden="true">
+  <div class="site-orb orb-a"></div>
+  <div class="site-orb orb-b"></div>
+  <div class="site-grid"></div>
+</div>
 
 <div id="toast"></div>
 
-<!-- ═══════════════ HOME ═══════════════ -->
-<div id="homeScreen" class="hidden">
-  <div class="home-logo">
-    <div class="home-emoji">📅</div>
-    <div class="home-title">群约小助手</div>
-    <div class="home-desc">随时随地发起时间调查</div>
-  </div>
-  <div class="home-cards">
-    <div class="hc" onclick="goToSetup()">
-      <div class="hc-ico">✏️</div>
-      <div class="hc-ttl">创建新表</div>
-      <div class="hc-desc">发起一个时间调查，邀请大家填写</div>
-      <div class="hc-list">
-        <div class="hc-item">支持自定义日期和时间段</div>
-        <div class="hc-item">预设参与者名单，一键加入</div>
-        <div class="hc-item">实时看到所有人的填写结果</div>
+<section id="homeScreen" class="screen screen-home hidden">
+  <div class="home-shell">
+    <div class="hero-panel">
+      <div class="hero-badge">多人时间协调</div>
+      <div class="home-logo">
+        <div class="home-emoji">📅</div>
+        <div class="home-title">群约小助手</div>
+        <div class="home-desc">把群聊里最耗时的“大家什么时候有空”变成一张清晰可协作的时间表。</div>
       </div>
-    </div>
-    <div id="historyCard" class="hc hidden" onclick="goToHistory()">
-      <div class="hc-ico">🕐</div>
-      <div class="hc-ttl">最近表格</div>
-      <div class="hc-desc" id="historyDesc">上次使用的表格们</div>
-      <div class="hc-list" id="historyList"></div>
-    </div>
-    <div class="hc" onclick="showTutorial()">
-      <div class="hc-ico">📖</div>
-      <div class="hc-ttl">如何使用</div>
-      <div class="hc-desc">看一遍 2 分钟快速上手教程</div>
-      <div class="hc-list">
-        <div class="hc-item">三态循环填写</div>
-        <div class="hc-item">布局切换查看</div>
-        <div class="hc-item">一键分享协作</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ═══════════════ HISTORY ═══════════════ -->
-<div id="historyScreen" class="hidden" style="display:flex;flex-direction:column;align-items:center;padding:36px 16px 60px">
-  <div style="text-align:center;margin-bottom:28px;width:100%;max-width:480px">
-    <div style="font-size:40px;margin-bottom:10px">🕐</div>
-    <div style="font-size:22px;font-weight:800;margin-bottom:4px">最近表格</div>
-    <div style="font-size:12px;color:var(--t3)">点击快速重新进入</div>
-  </div>
-  <div class="card" style="max-width:480px">
-    <div id="historyListFull"></div>
-    <button class="btn-s" onclick="goToHome()" style="margin-top:16px">返回首页</button>
-  </div>
-</div>
-
-<!-- ═══════════════ SETUP ═══════════════ -->
-<div id="setupScreen">
-  <div class="logo-area">
-    <div class="logo-emoji">📅</div>
-    <div class="logo-name">群约小助手</div>
-    <div class="logo-desc">发起时间调查，大家打开同一个链接各自填写</div>
-  </div>
-  <div class="card">
-    <div class="card-ttl">活动信息</div>
-    <div class="fg">
-      <label class="fl">活动名称</label>
-      <input class="fi" type="text" id="sName" placeholder="三月聚餐、周末球赛…" maxlength="20">
-    </div>
-    <div class="fi-row">
-      <div class="fg"><label class="fl">开始日期</label><input class="fi" type="date" id="sDateS"></div>
-      <div class="fg"><label class="fl">结束日期</label><input class="fi" type="date" id="sDateE"></div>
-    </div>
-    <div class="fi-row">
-      <div class="fg"><label class="fl">起始时间</label><select class="fi" id="sHourS"></select></div>
-      <div class="fg"><label class="fl">截止时间</label><select class="fi" id="sHourE"></select></div>
-    </div>
-    <div class="fg">
-      <label class="fl" for="sPrompt">发起人提示语 <span style="color:var(--t3);font-weight:400">（可选）</span></label>
-      <div class="prompt-helper">会展示给所有参与者，建议写清优先级与约束（例如：线下优先、可晚到 15 分钟）</div>
-      <textarea class="fi prompt-input" id="sPrompt" maxlength="200" placeholder="例如：优先线下、尽量安排在工作日晚上"></textarea>
-      <div class="prompt-tools">
-        <div class="prompt-quick">
-          <button class="prompt-chip" type="button" onclick="fillPromptTemplate('工作日晚间优先，线下参加优先。')">工作日晚间优先</button>
-          <button class="prompt-chip" type="button" onclick="fillPromptTemplate('优先线下，无法到场可线上参与。')">线下优先</button>
-          <button class="prompt-chip" type="button" onclick="fillPromptTemplate('请尽量选择连续 1 小时时段，方便安排。')">连续 1 小时</button>
+      <div class="hero-metrics">
+        <div class="hero-metric">
+          <span class="hero-metric-value">3 态</span>
+          <span class="hero-metric-label">有空 / 没空 / 未填</span>
         </div>
-        <div class="prompt-count" id="sPromptCount">0/200</div>
-      </div>
-      <div class="tag-hint">💡 会展示给所有参与者，帮助大家按统一约束填写</div>
-    </div>
-  </div>
-  <div class="card">
-    <div class="card-ttl">参与者</div>
-    <div class="fg">
-      <label class="fl">你的昵称（发起人）</label>
-      <input class="fi" type="text" id="sMyName" placeholder="你叫什么？" maxlength="10">
-    </div>
-    <div class="fg">
-      <label class="fl">其他参与者昵称 <span style="color:var(--t3);font-weight:400">（可选）</span></label>
-      <div class="tag-wrap" id="tagWrap" onclick="focusTagInput(event)">
-        <input type="text" class="tag-inp" id="tagInp" placeholder="输入昵称，按回车添加" maxlength="10">
-      </div>
-      <div class="tag-hint">💡 预设名单后，群友打开链接点自己名字就行</div>
-    </div>
-  </div>
-  <button class="btn-p" style="width:calc(100% - 32px);max-width:480px" onclick="createSession()">创建调查 →</button>
-</div>
-
-<!-- ═══════════════ JOIN ═══════════════ -->
-<div id="joinScreen" class="hidden" style="display:flex;flex-direction:column;align-items:center;padding:50px 16px 60px">
-  <div class="ev-card">
-    <div class="ev-emoji">🗓️</div>
-    <div class="ev-name" id="jEvName"></div>
-    <div class="ev-meta" id="jEvMeta"></div>
-  </div>
-  <div class="card" style="max-width:480px">
-    <div id="jPromptCard" class="prompt-card hidden">
-      <div class="prompt-title">📌 发起人提示</div>
-      <div class="prompt-body" id="jPromptText"></div>
-    </div>
-    <div id="jResumeArea" class="hidden">
-      <div class="resume-box">
-        <div>
-          <div class="rb-lbl">上次在此设备填过</div>
-          <div class="rb-name" id="jResumeName"></div>
+        <div class="hero-metric">
+          <span class="hero-metric-value">实时</span>
+          <span class="hero-metric-label">所有人同步更新</span>
         </div>
-        <button class="rb-btn" onclick="resumeSession()">继续 →</button>
+        <div class="hero-metric">
+          <span class="hero-metric-value">AI</span>
+          <span class="hero-metric-label">一键总结推荐时段</span>
+        </div>
       </div>
-      <div class="or-sep">— 不是你？选择或输入你的名字 —</div>
+      <button class="btn-p btn-hero" type="button" onclick="goToSetup()">立即创建调查</button>
     </div>
-    <div id="jChipsArea" class="hidden">
-      <div class="fl" style="margin-bottom:8px">选择你的名字</div>
-      <div class="chips-wrap" id="jChips"></div>
-      <div class="or-sep" id="jOrSep">— 或输入 —</div>
-    </div>
-    <div class="fg">
-      <label class="fl" id="jNameLabel">你叫什么？</label>
-      <input class="fi" type="text" id="jName" placeholder="输入你的昵称" maxlength="10">
-    </div>
-    <button class="btn-p" onclick="joinSession()">进入填写 →</button>
-    <button class="btn-s" onclick="viewOnly()">👀 仅查看结果</button>
-  </div>
-</div>
 
-<!-- ═══════════════ MAIN ═══════════════ -->
-<div id="mainScreen" class="hidden">
+    <div class="home-cards">
+      <button class="hc hc-primary" type="button" onclick="goToSetup()">
+        <div class="hc-head">
+          <div class="hc-ico">✏️</div>
+          <div class="hc-tag">Start</div>
+        </div>
+        <div class="hc-ttl">创建新表</div>
+        <div class="hc-desc">发起一个新的时间调查，自动生成分享链接，立刻发到群里开始协作。</div>
+        <div class="hc-list">
+          <div class="hc-item">支持自定义日期范围和时间段</div>
+          <div class="hc-item">可预设参与者名单，进入更顺手</div>
+          <div class="hc-item">创建后自动进入自己的填写视角</div>
+        </div>
+      </button>
+
+      <button id="historyCard" class="hc hidden" type="button" onclick="goToHistory()">
+        <div class="hc-head">
+          <div class="hc-ico">🕐</div>
+          <div class="hc-tag">Recent</div>
+        </div>
+        <div class="hc-ttl">最近表格</div>
+        <div class="hc-desc" id="historyDesc">上次使用的表格们</div>
+        <div class="hc-list hc-list-history" id="historyList"></div>
+      </button>
+
+      <button class="hc" type="button" onclick="showTutorial()">
+        <div class="hc-head">
+          <div class="hc-ico">📖</div>
+          <div class="hc-tag">Guide</div>
+        </div>
+        <div class="hc-ttl">如何使用</div>
+        <div class="hc-desc">2 分钟看懂三态填写、布局切换、分享协作和 AI 总结。</div>
+        <div class="hc-list">
+          <div class="hc-item">点一下切换状态，拖动可批量填写</div>
+          <div class="hc-item">按时间或按人员两种视图切换</div>
+          <div class="hc-item">打开同一链接即可多人协作</div>
+        </div>
+      </button>
+    </div>
+  </div>
+</section>
+
+<section id="historyScreen" class="screen screen-history hidden">
+  <div class="history-shell">
+    <div class="section-intro">
+      <div class="section-icon">🕐</div>
+      <div class="section-title">最近表格</div>
+      <div class="section-desc">从这里快速回到你最近操作过的调查。</div>
+    </div>
+    <div class="card history-card">
+      <div id="historyListFull" class="history-list-full"></div>
+      <button class="btn-s history-back-btn" type="button" onclick="goToHome()">返回首页</button>
+    </div>
+  </div>
+</section>
+
+<section id="setupScreen" class="screen screen-setup">
+  <div class="setup-shell">
+    <div class="setup-intro">
+      <div class="logo-area">
+        <div class="logo-emoji">📅</div>
+        <div class="logo-name">群约小助手</div>
+        <div class="logo-desc">发起时间调查后，大家打开同一个链接，各自填写可参与时段。</div>
+      </div>
+      <div class="setup-note">
+        <div class="setup-note-title">这次创建会顺带帮你完成三件事</div>
+        <div class="setup-note-item">自动生成一个可分享的专属链接</div>
+        <div class="setup-note-item">把你自己加入参与者名单</div>
+        <div class="setup-note-item">保留最近历史，回看更方便</div>
+      </div>
+    </div>
+
+    <div class="setup-form">
+      <div class="card">
+        <div class="card-ttl">活动信息</div>
+        <div class="fg">
+          <label class="fl" for="sName">活动名称</label>
+          <input class="fi" type="text" id="sName" placeholder="三月聚餐、周末球赛…" maxlength="20">
+        </div>
+        <div class="fi-row">
+          <div class="fg">
+            <label class="fl" for="sDateS">开始日期</label>
+            <input class="fi" type="date" id="sDateS">
+          </div>
+          <div class="fg">
+            <label class="fl" for="sDateE">结束日期</label>
+            <input class="fi" type="date" id="sDateE">
+          </div>
+        </div>
+        <div class="fi-row">
+          <div class="fg">
+            <label class="fl" for="sHourS">起始时间</label>
+            <select class="fi" id="sHourS"></select>
+          </div>
+          <div class="fg">
+            <label class="fl" for="sHourE">截止时间</label>
+            <select class="fi" id="sHourE"></select>
+          </div>
+        </div>
+        <div class="fg">
+          <label class="fl" for="sPrompt">发起人提示语 <span class="field-optional">可选</span></label>
+          <div class="prompt-helper">会展示给所有参与者，建议写清优先级与约束，例如线下优先、可晚到 15 分钟。</div>
+          <textarea class="fi prompt-input" id="sPrompt" maxlength="200" placeholder="例如：优先线下，尽量安排在工作日晚上"></textarea>
+          <div class="prompt-tools">
+            <div class="prompt-quick">
+              <button class="prompt-chip" type="button" onclick="fillPromptTemplate('工作日晚间优先，线下参加优先。')">工作日晚间优先</button>
+              <button class="prompt-chip" type="button" onclick="fillPromptTemplate('优先线下，无法到场可线上参与。')">线下优先</button>
+              <button class="prompt-chip" type="button" onclick="fillPromptTemplate('请尽量选择连续 1 小时时段，方便安排。')">连续 1 小时</button>
+            </div>
+            <div class="prompt-count" id="sPromptCount">0/200</div>
+          </div>
+          <div class="tag-hint">这段提示会和调查一起展示，帮助大家在同一套约束下填写。</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-ttl">参与者</div>
+        <div class="fg">
+          <label class="fl" for="sMyName">你的昵称（发起人）</label>
+          <input class="fi" type="text" id="sMyName" placeholder="你叫什么？" maxlength="10">
+        </div>
+        <div class="fg">
+          <label class="fl" for="tagInp">其他参与者昵称 <span class="field-optional">可选</span></label>
+          <div class="tag-wrap" id="tagWrap" onclick="focusTagInput(event)">
+            <input type="text" class="tag-inp" id="tagInp" placeholder="输入昵称，按回车添加" maxlength="10">
+          </div>
+          <div class="tag-hint">预设名单后，群友打开链接点自己的名字就能直接进入。</div>
+        </div>
+      </div>
+
+      <button class="btn-p create-btn" id="createBtn" type="button" onclick="createSession()">创建调查并进入填写</button>
+    </div>
+  </div>
+</section>
+
+<section id="joinScreen" class="screen screen-join hidden">
+  <div class="join-shell">
+    <div class="join-intro">
+      <div class="ev-card">
+        <div class="ev-emoji">🗓️</div>
+        <div class="ev-name" id="jEvName"></div>
+        <div class="ev-meta" id="jEvMeta"></div>
+      </div>
+      <div class="join-tip-card">
+        <div class="join-tip-title">进入前提示</div>
+        <div class="join-tip-item">选自己的名字后即可开始填写</div>
+        <div class="join-tip-item">同一份表格支持多人同时操作</div>
+        <div class="join-tip-item">也可以仅查看，不修改任何数据</div>
+      </div>
+    </div>
+
+    <div class="card join-card">
+      <div id="jPromptCard" class="prompt-card hidden">
+        <div class="prompt-title">📌 发起人提示</div>
+        <div class="prompt-body" id="jPromptText"></div>
+      </div>
+      <div id="jResumeArea" class="hidden">
+        <div class="resume-box">
+          <div>
+            <div class="rb-lbl">上次在此设备填写的是</div>
+            <div class="rb-name" id="jResumeName"></div>
+          </div>
+          <button class="rb-btn" type="button" onclick="resumeSession()">继续填写</button>
+        </div>
+        <div class="or-sep">不是你也没关系，可以重新选择或输入昵称</div>
+      </div>
+      <div id="jChipsArea" class="hidden">
+        <div class="fl chips-label">选择你的名字</div>
+        <div class="chips-wrap" id="jChips"></div>
+        <div class="or-sep" id="jOrSep">或者直接输入昵称</div>
+      </div>
+      <div class="fg">
+        <label class="fl" id="jNameLabel" for="jName">你叫什么？</label>
+        <input class="fi" type="text" id="jName" placeholder="输入你的昵称" maxlength="10">
+      </div>
+      <button class="btn-p" type="button" onclick="joinSession()">进入填写</button>
+      <button class="btn-s" type="button" onclick="viewOnly()">仅查看结果</button>
+    </div>
+  </div>
+</section>
+
+<section id="mainScreen" class="screen screen-main hidden">
   <div class="app-hdr">
-    <div class="hdr-info">
-      <div class="hdr-title" id="mTitle"></div>
-      <div class="hdr-sub"   id="mSub"></div>
-    </div>
-    <div class="hdr-actions">
-      <button class="hdr-btn-alt"   onclick="goToHome()">🏠 回首页</button>
-      <button class="hdr-btn-alt"   onclick="switchUser()">换人 🔄</button>
-      <button class="hdr-btn-share" onclick="openShare()">分享 📤</button>
-    </div>
-  </div>
-
-  <div class="stats-strip" id="statsStrip"></div>
-
-  <!-- 工具栏 -->
-  <div class="toolbar">
-    <span style="font-size:11px;color:var(--t3);font-weight:600;white-space:nowrap">布局：</span>
-    <button class="tb-btn active" id="btnTR" onclick="setLayout('tr')">⏱ 时间为行</button>
-    <button class="tb-btn"        id="btnPR" onclick="setLayout('pr')">👤 人员为行</button>
-    <div class="tb-sep"></div>
-    <button class="tb-btn" id="btnCollapse" onclick="toggleCollapse()">👁 展开他人</button>
-    <div class="tb-sep"></div>
-    <button class="tb-btn" id="btnAISummary" onclick="openAISummary()" style="margin-left:auto">✨ AI 总结</button>
-    <div class="legend">
-      <span class="lg-item"><span class="lg-box empty"></span>未填</span>
-      <span class="lg-item"><span class="lg-box avail"></span>有空</span>
-      <span class="lg-item"><span class="lg-box busy">✕</span>没空</span>
-    </div>
-  </div>
-
-  <div class="tip hidden" id="tipBox"></div>
-  <div id="mPromptCard" class="card prompt-card hidden">
-    <div class="prompt-title">📌 发起人提示</div>
-    <div class="prompt-body" id="mPromptText"></div>
-  </div>
-  <div id="gridContent"></div>
-  <div id="remarkCard" class="card remark-card hidden">
-    <div class="card-ttl">个人备注（可选）</div>
-    <div class="fg">
-      <label class="fl" for="myRemark">补充说明（如只能线上参加、某天晚到等）</label>
-      <textarea id="myRemark" class="fi remark-input" maxlength="200" placeholder="输入你的备注，AI 总结会参考"></textarea>
-      <div class="remark-meta">
-        <span id="remarkSaveHint">自动保存</span>
-        <span id="remarkCount">0/200</span>
+    <div class="hdr-inner">
+      <div class="hdr-info">
+        <div class="hdr-title" id="mTitle"></div>
+        <div class="hdr-sub" id="mSub"></div>
+      </div>
+      <div class="hdr-actions">
+        <button class="hdr-btn-alt" type="button" onclick="goToHome()">回首页</button>
+        <button class="hdr-btn-alt" type="button" onclick="switchUser()">换人</button>
+        <button class="hdr-btn-share" type="button" onclick="openShare()">分享链接</button>
       </div>
     </div>
   </div>
-  <div class="pb"></div>
-</div>
 
-<!-- ═══════════════ TUTORIAL ═══════════════ -->
+  <div class="main-shell">
+    <div class="stats-strip" id="statsStrip"></div>
+
+    <div class="toolbar">
+      <span class="toolbar-label">布局</span>
+      <button class="tb-btn active" id="btnTR" type="button" onclick="setLayout('tr')">时间为行</button>
+      <button class="tb-btn" id="btnPR" type="button" onclick="setLayout('pr')">人员为行</button>
+      <div class="tb-sep"></div>
+      <button class="tb-btn" id="btnCollapse" type="button" onclick="toggleCollapse()">展开他人</button>
+      <div class="tb-sep"></div>
+      <button class="tb-btn tb-btn-ghost" id="btnAISummary" type="button" onclick="openAISummary()">AI 总结</button>
+      <div class="legend">
+        <span class="lg-item"><span class="lg-box empty"></span>未填</span>
+        <span class="lg-item"><span class="lg-box avail"></span>有空</span>
+        <span class="lg-item"><span class="lg-box busy">✕</span>没空</span>
+      </div>
+    </div>
+
+    <div class="tip hidden" id="tipBox"></div>
+
+    <div id="mPromptCard" class="card prompt-card hidden">
+      <div class="prompt-title">📌 发起人提示</div>
+      <div class="prompt-body" id="mPromptText"></div>
+    </div>
+
+    <div id="gridContent" class="grid-content"></div>
+
+    <div id="remarkCard" class="card remark-card hidden">
+      <div class="card-ttl">个人备注</div>
+      <div class="fg">
+        <label class="fl" for="myRemark">补充说明，例如只能线上参加、某天会晚到</label>
+        <textarea id="myRemark" class="fi remark-input" maxlength="200" placeholder="输入你的备注，AI 总结也会参考"></textarea>
+        <div class="remark-meta">
+          <span id="remarkSaveHint">自动保存</span>
+          <span id="remarkCount">0/200</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="pb"></div>
+  </div>
+</section>
+
 <div class="tutorial-overlay" id="tutorialOverlay">
   <div class="tutorial-box">
     <div class="tutorial-step" id="tutStep">1️⃣</div>
     <div class="tutorial-title" id="tutTitle"></div>
     <div class="tutorial-desc" id="tutDesc"></div>
     <div class="tutorial-btns">
-      <button class="tutorial-btn tutorial-btn-skip" onclick="skipTutorial()">跳过</button>
-      <button class="tutorial-btn tutorial-btn-next" id="tutBtn">下一步</button>
+      <button class="tutorial-btn tutorial-btn-skip" type="button" onclick="skipTutorial()">跳过</button>
+      <button class="tutorial-btn tutorial-btn-next" type="button" id="tutBtn">下一步</button>
     </div>
   </div>
 </div>
 
-<!-- ═══════════════ AI SUMMARY ═══════════════ -->
 <div class="ai-summary-overlay" id="aiSummaryOverlay" onclick="overlayBgAI(event)">
   <div class="ai-sheet">
     <div class="ai-bar"></div>
-    <div class="ai-title">✨ AI 智能总结</div>
+    <div class="ai-title">AI 智能总结</div>
     <div class="ai-content" id="aiContent">
       <div class="ai-loading">生成中</div>
     </div>
-    <button class="btn-p" style="margin-top:16px" onclick="closeAISummary()">关闭</button>
+    <button class="btn-p ai-close-btn" type="button" onclick="closeAISummary()">关闭</button>
   </div>
 </div>
 
-<!-- ═══════════════ SHARE ═══════════════ -->
 <div class="overlay" id="shareOverlay" onclick="overlayBg(event)">
   <div class="sheet">
     <div class="sh-bar"></div>
-    <div class="sh-title">📤 分享链接给群友</div>
+    <div class="sh-title">分享链接给群友</div>
     <div class="sh-url" id="shUrl"></div>
     <div class="sh-note">
       每个人打开这个链接，选自己的名字，各自填写时段。<br>
-      数据自动保存，所有人实时看到最新结果。<br>
+      数据会自动保存，所有人都能实时看到最新结果。<br>
       <span id="shPeopleStat"></span>
     </div>
-    <button class="btn-p" onclick="copyUrl()">📋 复制链接</button>
-    <button class="btn-s" onclick="closeShare()">关闭</button>
+    <button class="btn-p" type="button" onclick="copyUrl()">复制链接</button>
+    <button class="btn-s" type="button" onclick="closeShare()">关闭</button>
   </div>
 </div>
 
