@@ -11,6 +11,7 @@ const ST_BUSY  = 2;  // 没空（浅红 + ✕）
 let SID     = null;
 let S       = null;
 let ME      = null;
+let AUTO_JOIN = false;
 // myAvail 格式：{ "2025-03-06": { 9: 1, 10: 2, ... } }
 let myAvail = {};
 let myRemark = '';
@@ -82,11 +83,40 @@ function loadHistory() {
   return JSON.parse(localStorage.getItem('mqa_history') || '[]');
 }
 
+function rememberLastName(name) {
+  if (name) localStorage.setItem('mqa_last_name', name);
+}
+
+function hydrateCurrentUser(name) {
+  ME = name;
+  const meP = S?.participants?.find(p => p.name === ME);
+  myAvail = meP?.avail ? JSON.parse(JSON.stringify(meP.avail)) : {};
+  myRemark = (meP?.remark || '').slice(0, 200);
+  localStorage.setItem('mqa_' + SID, ME);
+  rememberLastName(ME);
+  saveToHistory(SID, S.name, S.dateS, S.dateE);
+}
+
+function restoreParticipant(autoEnter = false) {
+  const saved = localStorage.getItem('mqa_' + SID);
+  const savedP = saved && S?.participants?.find(p => p.name === saved);
+  if (!savedP) return false;
+  hydrateCurrentUser(saved);
+  if (autoEnter) {
+    renderMain();
+    showScr('mainScreen');
+    startPoll();
+  }
+  return true;
+}
+
 function renderHistoryCard() {
   const hist = loadHistory();
   if (hist.length > 0) {
     $('historyCard').classList.remove('hidden');
-    const items = hist.slice(0, 3).map(h => `<div class="hc-item" onclick="goToSession('${h.id}')" style="cursor:pointer">${h.name} (${h.dateS})</div>`).join('');
+    const items = hist.slice(0, 3).map(h => (
+      `<button class="history-mini-item" type="button" onclick="event.stopPropagation(); goToSession('${h.id}')">${esc(h.name)} <span>${h.dateS}</span></button>`
+    )).join('');
     $('historyList').innerHTML = items;
     $('historyDesc').textContent = `${hist.length} 个最近的表格`;
   } else {
@@ -103,11 +133,14 @@ document.addEventListener('mouseup',  endDrag);
 document.addEventListener('touchend', endDrag);
 
 (async function init() {
-  SID = new URLSearchParams(location.search).get('s');
+  const params = new URLSearchParams(location.search);
+  SID = params.get('s');
+  AUTO_JOIN = params.get('auto_join') === '1';
   if (SID) {
     S = await api(`/api/session/${SID}`);
     if (!S) { toast('❌ 会话不存在或已过期'); setTimeout(() => location.href = '/', 2000); return; }
     S.participants.forEach(p => { p.avail = normalizeAvail(p.avail); });
+    if (AUTO_JOIN && restoreParticipant(true)) return;
     renderJoin();
   } else {
     initForm(); showHome();
@@ -140,11 +173,13 @@ function goToSetup() {
 function goToHistory() {
   const hist = loadHistory();
   $('historyListFull').innerHTML = hist.length > 0
-    ? hist.map(h => `<div class="fg">
-        <button class="btn-p" style="margin-top:0" onclick="goToSession('${h.id}')">${h.name}</button>
-        <div style="font-size:12px;color:var(--t3);margin-top:6px">${h.dateS} — ${h.dateE}</div>
-      </div>`).join('')
-    : '<div style="text-align:center;color:var(--t3);padding:20px">还没有历史记录呢</div>';
+    ? hist.map(h => `<button class="history-entry" type="button" onclick="goToSession('${h.id}')">
+        <span class="history-entry-copy">
+          <span class="history-entry-title">${esc(h.name)}</span>
+          <span class="history-entry-meta">${h.dateS} — ${h.dateE}</span>
+        </span>
+      </button>`).join('')
+    : '<div class="history-entry-meta" style="text-align:center;padding:20px">还没有历史记录呢</div>';
   showScr('historyScreen');
 }
 
@@ -161,6 +196,7 @@ function initForm() {
   const now = new Date(), later = new Date(now);
   later.setDate(now.getDate() + 3);
   $('sDateS').value = dfmt(now); $('sDateE').value = dfmt(later);
+  $('sMyName').value = localStorage.getItem('mqa_last_name') || '';
   const inp = $('tagInp');
   inp.addEventListener('keydown', e => {
     if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(); }
@@ -180,15 +216,29 @@ async function createSession() {
   const name = $('sName').value.trim(), dateS = $('sDateS').value, dateE = $('sDateE').value;
   const hourS = +$('sHourS').value, hourE = +$('sHourE').value, myName = $('sMyName').value.trim();
   const creatorPrompt = ($('sPrompt')?.value || '').trim().slice(0, 200);
+  const createBtn = $('createBtn');
   if (!name)            return toast('请输入活动名称');
   if (!dateS || !dateE) return toast('请选择日期');
   if (dateS > dateE)    return toast('开始日期不能晚于结束日期');
   if (hourS >= hourE)   return toast('截止时间须晚于起始时间');
   if (!myName)          return toast('请输入你的昵称（发起人）');
   if (dayDiff(dateS, dateE) > 14) return toast('日期范围最多14天');
-  $('setupScreen').querySelector('.btn-p').textContent = '创建中…';
-  const r = await api('/api/session', 'POST', { name, dateS, dateE, hourS, hourE, creatorPrompt, expectedNames: [...tags] });
-  if (!r?.id) { $('setupScreen').querySelector('.btn-p').textContent = '创建调查 →'; return toast('创建失败，请重试'); }
+  createBtn.textContent = '创建中…';
+  createBtn.disabled = true;
+  const expectedNames = tags.filter(tag => tag !== myName);
+  const r = await api('/api/session', 'POST', { name, dateS, dateE, hourS, hourE, creatorPrompt, expectedNames });
+  if (!r?.id) {
+    createBtn.textContent = '创建调查并进入填写';
+    createBtn.disabled = false;
+    return toast('创建失败，请重试');
+  }
+  const joined = await api(`/api/session/${r.id}/join`, 'POST', { name: myName, color: COLORS[0] });
+  rememberLastName(myName);
+  if (joined) {
+    localStorage.setItem('mqa_' + r.id, myName);
+    location.href = `/?s=${r.id}&auto_join=1`;
+    return;
+  }
   location.href = `/?s=${r.id}`;
 }
 
@@ -247,7 +297,8 @@ function renderJoin() {
       return `<div class="nchip${filled ? ' done' : ''}" onclick="${filled ? '' : `pickChip(this,'${esc(n)}')`}">${esc(n)}${filled ? ' ✓' : ''}</div>`;
     }).join('');
   } else { $('jChipsArea').classList.add('hidden'); }
-  jPick = null; $('jName').value = '';
+  jPick = null;
+  $('jName').value = localStorage.getItem('mqa_last_name') || '';
   showScr('joinScreen');
 }
 function pickChip(el, name) {
@@ -262,12 +313,7 @@ async function joinSession() {
   const newS = await api(`/api/session/${SID}/join`, 'POST', { name, color });
   if (!newS) return toast('加入失败，请重试');
   S = newS; S.participants.forEach(p => { p.avail = normalizeAvail(p.avail); });
-  ME = name;
-  const meP = S.participants.find(p => p.name === ME);
-  myAvail = meP?.avail ? JSON.parse(JSON.stringify(meP.avail)) : {};
-  myRemark = (meP?.remark || '').slice(0, 200);
-  localStorage.setItem('mqa_' + SID, ME);
-  saveToHistory(SID, S.name, S.dateS, S.dateE);
+  hydrateCurrentUser(name);
   renderMain(); showScr('mainScreen'); startPoll();
   toast(existingP ? `欢迎回来，${ME} 👋` : `点格子循环：有空（彩色）→ 没空（红✕）→ 不确定/未填（灰色） ✌️`);
 }
@@ -296,12 +342,12 @@ function toggleCollapse() {
     el.style.display = collapsed ? 'none' : '';
   });
   document.querySelectorAll('.toggle-btn-row td').forEach(td => {
-    td.textContent = collapsed ? '▼ 展开其他人' : '▲ 收起其他人';
+    td.textContent = collapsed ? '展开其他人' : '收起其他人';
   });
 }
 
 function updateCollapseBtn() {
-  $('btnCollapse').textContent = collapsed ? '👁 展开他人' : '🙈 折叠他人';
+  $('btnCollapse').textContent = collapsed ? '展开他人' : '折叠他人';
   $('btnCollapse').classList.toggle('active', !collapsed);
 }
 
@@ -451,7 +497,7 @@ function renderDayTR(date) {
 
   const otherCnt = ppl.filter((_, i) => i !== myI).length;
   const toggleRow = otherCnt > 0
-    ? `<tr class="toggle-btn-row" onclick="toggleCollapse()"><td colspan="${ppl.length + 2}">${collapsed ? '▼ 展开其他人' : '▲ 收起其他人'}</td></tr>` : '';
+    ? `<tr class="toggle-btn-row" onclick="toggleCollapse()"><td colspan="${ppl.length + 2}">${collapsed ? '展开其他人' : '收起其他人'}</td></tr>` : '';
 
   return `<table class="sg m-tr" data-date="${date}">
     ${thead}<tbody>${rows}${toggleRow}</tbody>
@@ -508,7 +554,7 @@ function renderDayPR(date) {
 
   const otherCnt = ppl.filter((_, i) => i !== myI).length;
   const toggleRow = otherCnt > 0
-    ? `<tr class="toggle-btn-row" onclick="toggleCollapse()"><td colspan="${hours.length + 2}">${collapsed ? '▼ 展开其他人' : '▲ 收起其他人'}</td></tr>` : '';
+    ? `<tr class="toggle-btn-row" onclick="toggleCollapse()"><td colspan="${hours.length + 2}">${collapsed ? '展开其他人' : '收起其他人'}</td></tr>` : '';
 
   return `<table class="sg m-pr" data-date="${date}">
     ${thead}<tbody>
@@ -632,6 +678,15 @@ function refreshSummary() {
           if (tds[idx]) tds[idx].innerHTML = buildSI(cntA, cntB, maxP);
         });
       }
+      ppl.forEach((p, i) => {
+        const row = document.querySelector(`table.sg.m-pr[data-date="${date}"] tr[data-pi="${i}"] .td-psum .si`);
+        if (!row) return;
+        const av = i === myI ? (myAvail[date] || {}) : (p.avail[date] || {});
+        const cntA = getHours().filter(h => getState(av, h) === ST_AVAIL).length;
+        const sumStyle = cntA > 0 ? 'background:#E8F8F0;color:#0F766E' : 'background:#F5F5F5;color:#CBD5E1';
+        row.setAttribute('style', sumStyle);
+        row.textContent = cntA > 0 ? cntA : '';
+      });
     }
   });
 }
@@ -710,30 +765,48 @@ function skipTutorial() {
 async function openAISummary() {
   if (!SID) return toast('无法获取会话信息');
   $('aiSummaryOverlay').classList.add('open');
-  // 调用后端 API
+  $('aiContent').innerHTML = '<div class="ai-loading">生成中</div>';
   const summary = await api(`/api/session/${SID}/summary`);
   if (summary?.summary) {
     renderAISummary(summary.summary);
   } else {
-    $('aiContent').innerHTML = `<div style="color:var(--t3);text-align:center;padding:20px">🚫 生成失败，请稍后重试</div>`;
+    $('aiContent').innerHTML = '<div class="ai-item-text">生成失败，请稍后重试。</div>';
   }
 }
 
 function renderAISummary(text) {
-  // 简单的 markdown-like 渲染
-  const lines = text.split('\n');
-  let html = '';
-  lines.forEach(line => {
+  const lines = String(text || '').split('\n');
+  const sections = [];
+  let current = { title: '总结', items: [] };
+
+  lines.forEach(raw => {
+    const line = raw.trim();
+    if (!line) return;
     if (line.startsWith('## ')) {
-      html += `<div class="ai-section"><div class="ai-section-title">${esc(line.slice(3))}</div>`;
-    } else if (line.startsWith('- ')) {
-      html += `<div class="ai-item"><div class="ai-item-emoji">•</div><div class="ai-item-text">${esc(line.slice(2))}</div></div>`;
-    } else if (line.trim()) {
-      html += `<div class="ai-item-text">${esc(line)}</div>`;
+      if (current.items.length || current.title !== '总结') sections.push(current);
+      current = { title: line.slice(3), items: [] };
+      return;
     }
+    if (line.startsWith('- ')) {
+      current.items.push({ type: 'bullet', value: line.slice(2) });
+      return;
+    }
+    current.items.push({ type: 'text', value: line.replace(/^\d+\.\s*/, '') });
   });
-  html += '</div>';
-  $('aiContent').innerHTML = html;
+
+  if (current.items.length || !sections.length) sections.push(current);
+
+  $('aiContent').innerHTML = sections.map(section => `
+    <div class="ai-section">
+      <div class="ai-section-title">${esc(section.title)}</div>
+      <div class="ai-section-body">
+        ${section.items.map(item => item.type === 'bullet'
+          ? `<div class="ai-item"><div class="ai-item-emoji">•</div><div class="ai-item-text">${esc(item.value)}</div></div>`
+          : `<div class="ai-item-text">${esc(item.value)}</div>`
+        ).join('')}
+      </div>
+    </div>
+  `).join('');
 }
 
 function closeAISummary() {
