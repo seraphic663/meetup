@@ -102,8 +102,10 @@ class TestApiSmoke(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 400)
         data = resp.get_json()
-        self.assertEqual(data.get("error"), "invalid payload")
-        self.assertTrue(data.get("details"))
+        self.assertEqual(data.get("error", {}).get("code"), "invalid_payload")
+        self.assertEqual(data.get("error", {}).get("message"), "请求参数不合法")
+        self.assertTrue(data.get("error", {}).get("details"))
+        self.assertTrue(data.get("request_id"))
 
     def test_06_summary_falls_back_without_api_key(self):
         sid = self._create_session()
@@ -132,6 +134,11 @@ class TestApiSmoke(unittest.TestCase):
         self.assertIn("## 推荐时段", summary)
         self.assertIn("## 协调建议", summary)
         self.assertIn("Alice", summary)
+
+    def test_07_request_id_header_present(self):
+        resp = self.client.get("/healthz", headers={"X-Request-Id": "test-request-id"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.headers.get("X-Request-Id"), "test-request-id")
 
 
 if __name__ == "__main__":
