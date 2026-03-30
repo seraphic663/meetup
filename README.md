@@ -17,6 +17,8 @@
 - 历史记录（localStorage，最近 5 条）
 - 使用教程引导
 - 适配移动端与桌面端布局
+- 前端模块化拆分（入口 / 状态 / API / 渲染 / 历史）
+- 请求级日志、请求 ID 与统一 API 错误结构
 
 ---
 
@@ -66,21 +68,23 @@ python run.py
 | 后端 | Flask 3 + SQLite |
 | AI | DeepSeek API (`deepseek-chat`) |
 | 部署 | Railway + Gunicorn |
+| CI | GitHub Actions |
 
 ---
 
 ## 文件结构
 
 ```
-server.py        # Flask 后端
-index.html       # 页面结构
-styles.css       # 样式
-app.js           # 交互逻辑
-run.py           # 本地启动脚本
-启动.ps1         # Windows 启动脚本
-Procfile         # Railway 部署配置
+server.py              # Flask 后端
+index.html             # 页面结构
+styles.css             # 样式
+assets/js/             # 前端模块（入口 / 状态 / API / 渲染等）
+run.py                 # 本地启动脚本
+启动.ps1               # Windows 启动脚本
+Procfile               # Railway 部署配置
+.github/workflows/     # CI 配置
 requirements.txt
-sessions/        # SQLite 数据库目录（本地）
+sessions/              # SQLite 数据库目录（本地）
 ```
 
 ---
@@ -126,6 +130,9 @@ python -m unittest tests/test_api_smoke.py -v
 python scripts/security_guard.py --workspace --history
 ```
 
+6. 备份数据库
+   - 参考 [docs/backup_restore.md](docs/backup_restore.md)
+
 ---
 
 ## 安全收口（A）
@@ -135,6 +142,8 @@ python scripts/security_guard.py --workspace --history
 - 提供本地扫描脚本：`scripts/security_guard.py`
 - 提供应急与历史治理文档：`docs/安全收口执行清单_2026-03-19.md`
 - 提供提交前防护：`.githooks/pre-commit`
+- 提供 CI 基线：`.github/workflows/ci.yml`
+- 提供备份恢复 SOP：`docs/backup_restore.md`
 
 建议先安装提交前钩子：
 

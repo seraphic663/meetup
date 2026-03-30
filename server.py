@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, g, jsonify, request, send_from_directory
+import logging
 import json
 import os
 import re
@@ -12,12 +13,15 @@ import sqlite3
 import time
 
 import requests
+from werkzeug.exceptions import HTTPException
 
 app = Flask(__name__)
 BASE = os.path.dirname(os.path.abspath(__file__))
+ASSETS_DIR = os.path.join(BASE, "assets")
 DB_PATH = os.environ.get("DB_PATH", os.path.join(BASE, "sessions", "sessions.db"))
 DB_USES_URI = DB_PATH.startswith("file:")
 KEEPALIVE_DB = None
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
@@ -30,6 +34,9 @@ EXPECTED_NAMES_MAX = 12
 MAX_RANGE_DAYS = 14
 VALID_STATES = {0, 1, 2}
 COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+
+logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO))
+logger = logging.getLogger("meetup")
 
 
 def get_db():
@@ -64,6 +71,39 @@ def init_db():
 
 
 init_db()
+
+
+def _request_id() -> str | None:
+    return getattr(g, "request_id", None)
+
+
+def _log_event(level: str, event: str, **fields) -> None:
+    payload = {
+        "event": event,
+        "ts": int(time.time()),
+        **fields,
+    }
+    getattr(logger, level, logger.info)(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+
+
+def _api_error(code: str, status: int, message: str, details=None):
+    payload = {
+        "error": {
+            "code": code,
+            "message": message,
+        },
+        "request_id": _request_id(),
+    }
+    if details:
+        payload["error"]["details"] = details
+    return jsonify(payload), status
+
+
+def _json_body():
+    body = request.get_json(force=True, silent=True)
+    if body is None:
+        raise ValueError("请求体必须是合法 JSON")
+    return body
 
 
 def _sanitize_sid(sid: str) -> str:
@@ -338,11 +378,83 @@ def generate_ai_summary(session_data: dict) -> str:
             choices = data.get("choices") or []
             if choices and choices[0].get("message", {}).get("content"):
                 return choices[0]["message"]["content"]
+        _log_event(
+            "warning",
+            "ai_summary_failed",
+            request_id=_request_id(),
+            reason="upstream_error",
+            status_code=response.status_code,
+        )
         return f"{fallback_summary}\n\n## 说明\n- AI 服务暂时不可用，已返回本地总结。"
     except requests.exceptions.Timeout:
+        _log_event("warning", "ai_summary_failed", request_id=_request_id(), reason="timeout")
         return f"{fallback_summary}\n\n## 说明\n- AI 请求超时，已返回本地总结。"
-    except Exception:
+    except Exception as exc:
+        _log_event(
+            "error",
+            "ai_summary_failed",
+            request_id=_request_id(),
+            reason="exception",
+            exception_type=type(exc).__name__,
+            message=str(exc),
+        )
         return f"{fallback_summary}\n\n## 说明\n- AI 生成失败，已返回本地总结。"
+
+
+@app.before_request
+def before_request():
+    g.request_id = request.headers.get("X-Request-Id") or secrets.token_hex(8)
+    g.request_started_at = time.perf_counter()
+
+
+@app.after_request
+def after_request(response):
+    request_id = _request_id() or secrets.token_hex(8)
+    response.headers["X-Request-Id"] = request_id
+    duration_ms = int((time.perf_counter() - getattr(g, "request_started_at", time.perf_counter())) * 1000)
+    _log_event(
+        "info",
+        "request_completed",
+        request_id=request_id,
+        method=request.method,
+        path=request.path,
+        status=response.status_code,
+        duration_ms=duration_ms,
+        remote_addr=request.headers.get("X-Forwarded-For", request.remote_addr),
+    )
+    return response
+
+
+@app.errorhandler(HTTPException)
+def handle_http_exception(exc: HTTPException):
+    _log_event(
+        "warning",
+        "http_exception",
+        request_id=_request_id(),
+        method=request.method,
+        path=request.path,
+        status=exc.code,
+        error=exc.name,
+    )
+    if request.path.startswith("/api/"):
+        return _api_error("http_error", exc.code or 500, exc.description)
+    return exc
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_exception(exc: Exception):
+    _log_event(
+        "error",
+        "unhandled_exception",
+        request_id=_request_id(),
+        method=request.method,
+        path=request.path,
+        exception_type=type(exc).__name__,
+        message=str(exc),
+    )
+    if request.path.startswith("/api/"):
+        return _api_error("internal_server_error", 500, "服务器内部错误，请稍后重试")
+    return "Internal Server Error", 500
 
 
 @app.route("/")
@@ -355,9 +467,14 @@ def styles():
     return send_from_directory(BASE, "styles.css")
 
 
+@app.route("/assets/<path:filename>")
+def assets(filename):
+    return send_from_directory(ASSETS_DIR, filename)
+
+
 @app.route("/app.js")
 def app_js():
-    return send_from_directory(BASE, "app.js")
+    return send_from_directory(os.path.join(ASSETS_DIR, "js"), "app.js")
 
 
 @app.route("/healthz")
@@ -367,33 +484,47 @@ def healthz():
 
 @app.route("/api/session", methods=["POST"])
 def create():
-    body = request.get_json(force=True) or {}
+    try:
+        body = _json_body()
+    except ValueError as exc:
+        return _api_error("invalid_json", 400, str(exc))
     payload, errors = _validate_create_payload(body)
     if errors:
-        return jsonify({"error": "invalid payload", "details": errors}), 400
+        return _api_error("invalid_payload", 400, "请求参数不合法", errors)
 
     sid = secrets.token_hex(4)
     payload["id"] = sid
     _save(sid, payload)
+    _log_event(
+        "info",
+        "session_created",
+        request_id=_request_id(),
+        session_id=sid,
+        name=payload["name"],
+        expected_count=len(payload["expectedNames"]),
+    )
     return jsonify({"id": sid})
 
 
 @app.route("/api/session/<sid>")
 def read(sid):
     session_data = _load(sid)
-    return jsonify(session_data) if session_data else (jsonify({"error": "not found"}), 404)
+    return jsonify(session_data) if session_data else _api_error("not_found", 404, "会话不存在")
 
 
 @app.route("/api/session/<sid>/join", methods=["POST"])
 def join(sid):
     session_data = _load(sid)
     if not session_data:
-        return jsonify({"error": "not found"}), 404
+        return _api_error("not_found", 404, "会话不存在")
 
-    body = request.get_json(force=True) or {}
+    try:
+        body = _json_body()
+    except ValueError as exc:
+        return _api_error("invalid_json", 400, str(exc))
     name = _clean_text(body.get("name"), PERSON_NAME_MAX)
     if not name:
-        return jsonify({"error": "name required"}), 400
+        return _api_error("name_required", 400, "昵称不能为空")
 
     participants = session_data.setdefault("participants", [])
     existing = next((item for item in participants if item.get("name") == name), None)
@@ -407,6 +538,14 @@ def join(sid):
             }
         )
         _save(sid, session_data)
+        _log_event(
+            "info",
+            "participant_joined",
+            request_id=_request_id(),
+            session_id=sid,
+            participant=name,
+            participant_count=len(participants),
+        )
     return jsonify(session_data)
 
 
@@ -414,18 +553,30 @@ def join(sid):
 def avail(sid):
     session_data = _load(sid)
     if not session_data:
-        return jsonify({"error": "not found"}), 404
+        return _api_error("not_found", 404, "会话不存在")
 
-    body = request.get_json(force=True) or {}
+    try:
+        body = _json_body()
+    except ValueError as exc:
+        return _api_error("invalid_json", 400, str(exc))
     name = _clean_text(body.get("name"), PERSON_NAME_MAX)
     participant = next((item for item in session_data.get("participants", []) if item.get("name") == name), None)
     if participant is None:
-        return jsonify({"error": "participant not found"}), 404
+        return _api_error("participant_not_found", 404, "参与者不存在")
 
     participant["avail"] = _normalize_avail(session_data, body.get("avail", {}))
     if "remark" in body:
         participant["remark"] = _clean_text(body.get("remark"), REMARK_MAX)
     _save(sid, session_data)
+    _log_event(
+        "info",
+        "availability_saved",
+        request_id=_request_id(),
+        session_id=sid,
+        participant=name,
+        date_count=len(participant["avail"]),
+        remark_len=len(participant.get("remark", "")),
+    )
     return jsonify({"ok": True})
 
 
@@ -433,8 +584,16 @@ def avail(sid):
 def summary(sid):
     session_data = _load(sid)
     if not session_data:
-        return jsonify({"error": "not found"}), 404
-    return jsonify({"summary": generate_ai_summary(session_data)})
+        return _api_error("not_found", 404, "会话不存在")
+    summary_text = generate_ai_summary(session_data)
+    _log_event(
+        "info",
+        "summary_generated",
+        request_id=_request_id(),
+        session_id=sid,
+        participant_count=len(session_data.get("participants", [])),
+    )
+    return jsonify({"summary": summary_text})
 
 
 if __name__ == "__main__":

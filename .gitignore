@@ -1,8 +1,10 @@
 sessions.db
 sessions/
+backups/
 cloudflared.exe
 __pycache__/
 *.pyc
+*.db-journal
 .env
 .env.*
 !.env.example
