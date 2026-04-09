@@ -27,6 +27,7 @@ export const TUTORIAL_STEPS = [
 ];
 
 export const CHANGELOG_ITEMS = [
+  { version: '4.3', title: '本地启动修复版', date: '2026-04-09', summary: '修复本地运行时静态脚本 404 与时间下拉框失效问题。' },
   { version: '4.2', title: '表格管理版', date: '2026-04-09', summary: '创建者可改整张表、删整表、改参与者名单，参与者可主动退出。' },
   { version: '4.1', title: '模块化硬化版', date: '2026-03-30', summary: '前端模块化拆分，CI、备份和 API 基线补齐。' },
   { version: '4.0', title: '会话打磨版', date: '2026-03-29', summary: 'UI 与会话流程整体打磨，进入阶段性跃迁。' },
