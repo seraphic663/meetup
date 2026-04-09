@@ -16,7 +16,7 @@ import time
 import requests
 from werkzeug.exceptions import HTTPException
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder=None)
 MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(MODULE_DIR)
 FRONTEND_DIR = os.path.join(ROOT_DIR, "frontend")

@@ -138,14 +138,9 @@ button {
 
 .hero-panel,
 .hc,
-.card,
-.join-tip-card,
 .stats-strip,
 .toolbar,
-.g-card,
-.sheet,
-.ai-sheet,
-.tutorial-box {
+.g-card {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
 }
@@ -644,8 +639,17 @@ button {
   color: var(--text);
   font-size: 15px;
   outline: none;
-  -webkit-appearance: none;
-  appearance: none;
+}
+
+select.fi {
+  min-height: 52px;
+  cursor: pointer;
+  -webkit-appearance: menulist;
+  appearance: auto;
+}
+
+select.fi option {
+  color: var(--text);
 }
 
 .fi:focus,
