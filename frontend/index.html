@@ -80,6 +80,18 @@
           <div class="hc-item">打开同一链接即可多人协作</div>
         </div>
       </button>
+
+      <details class="hc hc-log">
+        <summary class="log-summary">
+          <span class="hc-head">
+            <span class="hc-ico">🧾</span>
+            <span class="hc-tag">Updates</span>
+          </span>
+          <span class="hc-ttl">更新日志</span>
+          <span class="hc-desc">默认折叠，展开可快速查看最近几次版本变化。</span>
+        </summary>
+        <div class="log-list" id="homeChangelogList"></div>
+      </details>
     </div>
   </div>
 </section>
@@ -233,6 +245,9 @@
       <div class="hdr-actions">
         <button class="hdr-btn-alt" type="button" onclick="goToHome()">回首页</button>
         <button class="hdr-btn-alt" type="button" onclick="switchUser()">换人</button>
+        <button class="hdr-btn-alt hidden" id="leaveSessionBtn" type="button" onclick="leaveCurrentSession()">退出此表</button>
+        <button class="hdr-btn-alt hidden" id="manageBtn" type="button" onclick="openManageSession()">管理表格</button>
+        <button class="hdr-btn-alt hidden" id="deleteSessionBtn" type="button" onclick="deleteCurrentSession()">删除整表</button>
         <button class="hdr-btn-share" type="button" onclick="openShare()">分享链接</button>
       </div>
     </div>
@@ -319,6 +334,61 @@
   </div>
 </div>
 
-<script type="module" src="/assets/js/app.js"></script>
+<div class="overlay" id="manageOverlay" onclick="overlayBgManage(event)">
+  <div class="sheet manage-sheet">
+    <div class="sh-bar"></div>
+    <div class="sh-title">管理表格</div>
+    <div class="manage-grid">
+      <div class="fg">
+        <label class="fl" for="manageName">活动名称</label>
+        <input class="fi" type="text" id="manageName" maxlength="20">
+      </div>
+      <div class="fi-row">
+        <div class="fg">
+          <label class="fl" for="manageDateS">开始日期</label>
+          <input class="fi" type="date" id="manageDateS">
+        </div>
+        <div class="fg">
+          <label class="fl" for="manageDateE">结束日期</label>
+          <input class="fi" type="date" id="manageDateE">
+        </div>
+      </div>
+      <div class="fi-row">
+        <div class="fg">
+          <label class="fl" for="manageHourS">起始时间</label>
+          <select class="fi" id="manageHourS"></select>
+        </div>
+        <div class="fg">
+          <label class="fl" for="manageHourE">截止时间</label>
+          <select class="fi" id="manageHourE"></select>
+        </div>
+      </div>
+      <div class="fg">
+        <label class="fl" for="managePrompt">发起人提示语</label>
+        <textarea class="fi prompt-input" id="managePrompt" maxlength="200"></textarea>
+        <div class="prompt-tools">
+          <div class="tag-hint">修改后会同步给所有参与者。</div>
+          <div class="prompt-count" id="managePromptCount">0/200</div>
+        </div>
+      </div>
+      <div class="fg">
+        <label class="fl" for="manageExpectedNames">预设参与者</label>
+        <textarea class="fi manage-list-input" id="manageExpectedNames" placeholder="一行一个昵称，也支持用逗号分隔"></textarea>
+      </div>
+      <div class="fg">
+        <div class="manage-participants-head">
+          <label class="fl">当前参与者名单</label>
+          <button class="btn-s manage-add-btn" type="button" onclick="addManageParticipant()">新增参与者</button>
+        </div>
+        <div class="manage-participants-list" id="manageParticipantsList"></div>
+        <div class="tag-hint">这里不会改动他们已填写的时间和备注，只会改名单本身。</div>
+      </div>
+    </div>
+    <button class="btn-p" type="button" onclick="saveManagedSession()">保存修改</button>
+    <button class="btn-s" type="button" onclick="closeManageSession()">关闭</button>
+  </div>
+</div>
+
+<script type="module" src="/static/js/app.js"></script>
 </body>
 </html>

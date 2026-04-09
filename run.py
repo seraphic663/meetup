@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """本地启动脚本 - 通过环境变量 DEEPSEEK_API_KEY 配置 AI 功能"""
-import os, socket
+import os
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
@@ -12,18 +12,7 @@ if not key:
 else:
     print('\n✓  DEEPSEEK_API_KEY 已配置，AI 总结功能已启用\n')
 
-from server import app
+from backend.server import main
 
 if __name__ == '__main__':
-    try:
-        ip = socket.gethostbyname(socket.gethostname())
-    except Exception:
-        ip = '127.0.0.1'
-    print('=' * 52)
-    print('  📅  群约小助手已启动！')
-    print('=' * 52)
-    print(f'  🖥   本机访问：   http://localhost:5000')
-    print(f'  📱   局域网访问： http://{ip}:5000')
-    print('\n  Ctrl+C 停止服务')
-    print('=' * 52 + '\n')
-    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+    main()

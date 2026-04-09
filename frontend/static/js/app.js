@@ -1,6 +1,20 @@
 import { requestJson, ApiError } from './api.js';
 import { COLORS, ST_AVAIL, ST_BUSY, TUTORIAL_STEPS } from './constants.js';
-import { getLastName, getSavedParticipantName, rememberLastName, saveParticipantName, saveToHistory } from './history.js';
+import {
+  clearParticipantAccess,
+  clearSessionAccess,
+  getLastName,
+  getSavedParticipantName,
+  getSessionAccess,
+  getSessionAuthHeaders,
+  rememberLastName,
+  removeHistoryItem,
+  saveCreatorToken,
+  saveParticipantAccess,
+  saveParticipantName,
+  saveSessionFlags,
+  saveToHistory,
+} from './history.js';
 import { $, clone, dayDiff, dfmt, esc, getDates, getHours, getState, normalizeAvail, showScreen, toast } from './helpers.js';
 import { buildSummaryCell, cellStyle, getNextColor, renderGrid, renderHistoryCard, renderHistoryScreen, renderJoin, renderMain, updateCollapseButton, updateRemarkCounter, updateRemarkHint } from './render.js';
 import { renderAISummary } from './summary.js';
@@ -11,20 +25,57 @@ function getApiMessage(error, fallback) {
   return fallback;
 }
 
-function hydrateCurrentUser(name) {
-  state.ME = name;
-  const participant = state.S?.participants?.find(item => item.name === state.ME);
+function sessionHeaders(sessionId = state.SID) {
+  return getSessionAuthHeaders(sessionId);
+}
+
+function getCurrentParticipant() {
+  return state.S?.participants?.find(item => item.id === state.ME) || null;
+}
+
+function applySession(session) {
+  state.S = session;
+  state.S.participants.forEach(participant => {
+    participant.avail = normalizeAvail(participant.avail);
+  });
+  saveSessionFlags(state.SID, {
+    legacyCanDelete: Boolean(state.S?.capabilities?.canDeleteSession && !state.S?.viewer?.isCreator && !getSessionAccess(state.SID).creatorToken),
+  });
+
+  if (state.S.viewer?.participantId) {
+    state.ME = state.S.viewer.participantId;
+    state.ME_NAME = state.S.viewer.participantName || '';
+    saveParticipantAccess(state.SID, {
+      participantId: state.S.viewer.participantId,
+      participantName: state.S.viewer.participantName || '',
+    });
+  } else if (state.ME && !state.S.participants.some(participant => participant.id === state.ME)) {
+    state.ME = null;
+    state.ME_NAME = '';
+    state.myAvail = {};
+    state.myRemark = '';
+    clearParticipantAccess(state.SID);
+  }
+}
+
+function hydrateCurrentUser(participantId, fallbackName = '') {
+  state.ME = participantId;
+  const participant = state.S?.participants?.find(item => item.id === state.ME);
+  state.ME_NAME = participant?.name || fallbackName || '';
   state.myAvail = participant?.avail ? clone(participant.avail) : {};
   state.myRemark = (participant?.remark || '').slice(0, 200);
-  saveParticipantName(state.SID, state.ME);
+  saveParticipantName(state.SID, state.ME_NAME);
   saveToHistory(state.SID, state.S.name, state.S.dateS, state.S.dateE);
 }
 
 function restoreParticipant(autoEnter = false) {
-  const savedName = getSavedParticipantName(state.SID);
-  const savedParticipant = savedName && state.S?.participants?.find(item => item.name === savedName);
+  const access = getSessionAccess(state.SID);
+  const savedId = access.participantId;
+  const savedName = access.participantName || getSavedParticipantName(state.SID);
+  const savedParticipant = (savedId && state.S?.participants?.find(item => item.id === savedId))
+    || (savedName && state.S?.participants?.find(item => item.name === savedName));
   if (!savedParticipant) return false;
-  hydrateCurrentUser(savedName);
+  hydrateCurrentUser(savedParticipant.id, savedParticipant.name);
   if (autoEnter) {
     renderMainScreen();
     showScreen('mainScreen');
@@ -35,7 +86,7 @@ function restoreParticipant(autoEnter = false) {
 
 function syncCurrentParticipant() {
   if (!state.ME || !state.S) return;
-  const participant = state.S.participants.find(item => item.name === state.ME);
+  const participant = state.S.participants.find(item => item.id === state.ME);
   if (!participant) return;
   participant.avail = clone(state.myAvail);
   participant.remark = state.myRemark;
@@ -43,6 +94,7 @@ function syncCurrentParticipant() {
 
 function renderMainScreen() {
   renderMain();
+  renderSessionControls();
   bindRemarkInput();
   attachEvents();
 }
@@ -50,6 +102,14 @@ function renderMainScreen() {
 function bindRemarkInput() {
   const remark = $('myRemark');
   if (remark) remark.oninput = onRemarkInput;
+}
+
+function renderSessionControls() {
+  const canManage = Boolean(state.S?.capabilities?.canManageSession);
+  const canLeave = Boolean(state.S?.capabilities?.canLeaveSession);
+  $('manageBtn')?.classList.toggle('hidden', !canManage);
+  $('deleteSessionBtn')?.classList.toggle('hidden', !canManage);
+  $('leaveSessionBtn')?.classList.toggle('hidden', !canLeave || canManage);
 }
 
 function showHome() {
@@ -80,8 +140,11 @@ function goToHistory() {
 function initForm() {
   const startSelect = $('sHourS');
   const endSelect = $('sHourE');
+  const manageStartSelect = $('manageHourS');
+  const manageEndSelect = $('manageHourE');
   for (let hour = 0; hour <= 23; hour += 1) {
-    [startSelect, endSelect].forEach(select => {
+    [startSelect, endSelect, manageStartSelect, manageEndSelect].forEach(select => {
+      if (!select) return;
       const option = document.createElement('option');
       option.value = hour;
       option.textContent = `${String(hour).padStart(2, '0')}:00`;
@@ -110,7 +173,9 @@ function initForm() {
   tagInput.addEventListener('blur', () => $('tagWrap').classList.remove('focused'));
 
   $('sPrompt').addEventListener('input', updatePromptCount);
+  $('managePrompt')?.addEventListener('input', updateManagePromptCount);
   updatePromptCount();
+  updateManagePromptCount();
 }
 
 async function createSession() {
@@ -142,17 +207,24 @@ async function createSession() {
         dateE,
         hourS,
         hourE,
+        creatorName: myName,
         creatorPrompt,
         expectedNames: state.tags.filter(tag => tag !== myName),
       },
     });
+    saveCreatorToken(created.id, created.creatorToken);
 
-    await requestJson(`/api/session/${created.id}/join`, {
+    const joined = await requestJson(`/api/session/${created.id}/join`, {
       method: 'POST',
+      headers: sessionHeaders(created.id),
       body: { name: myName, color: COLORS[0] },
     });
+    saveParticipantAccess(created.id, {
+      participantId: joined.participantId,
+      participantName: joined.participantName || myName,
+      participantToken: joined.participantToken,
+    });
     rememberLastName(myName);
-    saveParticipantName(created.id, myName);
     location.href = `/?s=${created.id}&auto_join=1`;
   } catch (error) {
     toast(getApiMessage(error, '创建失败，请重试'));
@@ -225,17 +297,20 @@ async function joinSession() {
   try {
     const updated = await requestJson(`/api/session/${state.SID}/join`, {
       method: 'POST',
+      headers: sessionHeaders(),
       body: { name, color },
     });
-    state.S = updated;
-    state.S.participants.forEach(participant => {
-      participant.avail = normalizeAvail(participant.avail);
+    saveParticipantAccess(state.SID, {
+      participantId: updated.participantId,
+      participantName: updated.participantName || name,
+      participantToken: updated.participantToken,
     });
-    hydrateCurrentUser(name);
+    applySession(updated.session);
+    hydrateCurrentUser(updated.participantId, updated.participantName || name);
     renderMainScreen();
     showScreen('mainScreen');
     startPoll();
-    toast(existing ? `欢迎回来，${state.ME} 👋` : '点格子循环：有空（彩色）→ 没空（红✕）→ 不确定/未填（灰色）');
+    toast(existing ? `欢迎回来，${state.ME_NAME} 👋` : '点格子循环：有空（彩色）→ 没空（红✕）→ 不确定/未填（灰色）');
   } catch (error) {
     toast(getApiMessage(error, '加入失败，请重试'));
   }
@@ -250,6 +325,7 @@ async function resumeSession() {
 
 function viewOnly() {
   state.ME = null;
+  state.ME_NAME = '';
   state.myAvail = {};
   state.myRemark = '';
   saveToHistory(state.SID, state.S.name, state.S.dateS, state.S.dateE);
@@ -261,6 +337,7 @@ function viewOnly() {
 function switchUser() {
   stopPoll();
   state.ME = null;
+  state.ME_NAME = '';
   state.myAvail = {};
   state.myRemark = '';
   renderJoin();
@@ -354,7 +431,7 @@ function applyCell(date, hour, status, cell) {
   if (!state.myAvail[date]) state.myAvail[date] = {};
   state.myAvail[date][String(hour)] = status;
   if (cell) {
-    const me = state.S.participants.find(participant => participant.name === state.ME);
+    const me = getCurrentParticipant();
     cell.setAttribute('style', cellStyle(status, me?.color || '#07C160'));
     cell.textContent = status === ST_BUSY ? '✕' : '';
   }
@@ -376,7 +453,8 @@ async function saveAvail() {
   try {
     await requestJson(`/api/session/${state.SID}/avail`, {
       method: 'PUT',
-      body: { name: state.ME, avail: state.myAvail, remark: state.myRemark },
+      headers: sessionHeaders(),
+      body: { name: state.ME_NAME, avail: state.myAvail, remark: state.myRemark },
     });
   } catch (_) {
     updateRemarkHint('保存失败');
@@ -385,7 +463,7 @@ async function saveAvail() {
 
 function refreshSummary() {
   const participants = state.S.participants;
-  const currentUserIndex = participants.findIndex(participant => participant.name === state.ME);
+  const currentUserIndex = participants.findIndex(participant => participant.id === state.ME);
   const maxParticipants = participants.length;
 
   getDates(state.S).forEach(date => {
@@ -439,43 +517,37 @@ async function doPoll() {
   if (state.drag.on || !state.SID) return;
   let freshSession;
   try {
-    freshSession = await requestJson(`/api/session/${state.SID}`);
+    freshSession = await requestJson(`/api/session/${state.SID}`, { headers: sessionHeaders() });
   } catch (_) {
     return;
   }
-
   const previousCount = state.S.participants.length;
-  freshSession.participants.forEach(participant => {
-    participant.avail = normalizeAvail(participant.avail);
-    if (participant.name === state.ME) return;
-    const existing = state.S.participants.find(item => item.name === participant.name);
-    if (existing) {
-      existing.avail = participant.avail;
-      existing.remark = participant.remark || '';
-    } else {
-      state.S.participants.push({ ...participant });
-    }
-  });
+  const previousViewerId = state.ME;
+  applySession(freshSession);
 
-  if (state.S.participants.length > previousCount) {
-    toast(`${state.S.participants[state.S.participants.length - 1].name} 加入了`);
+  if (previousViewerId && !state.ME) {
+    toast('你已不在这张表中，当前切换为查看模式');
     renderMainScreen();
     return;
   }
 
-  state.S.participants.forEach((participant, index) => {
-    if (participant.name === state.ME) return;
-    getDates(state.S).forEach(date => {
-      getHours(state.S).forEach(hour => {
-        const status = getState(participant.avail[date] || {}, hour);
-        const cell = document.querySelector(`.ci[data-pi="${index}"][data-date="${date}"][data-hour="${hour}"]`);
-        if (!cell) return;
-        cell.setAttribute('style', cellStyle(status, participant.color));
-        cell.textContent = status === ST_BUSY ? '✕' : '';
-      });
-    });
-  });
-  refreshSummary();
+  if (state.ME) {
+    const current = getCurrentParticipant();
+    if (current) {
+      state.ME_NAME = current.name;
+      if (!state.drag.on) {
+        state.myAvail = clone(current.avail || {});
+        state.myRemark = (current.remark || '').slice(0, 200);
+      }
+    }
+  }
+
+  if (state.S.participants.length !== previousCount) {
+    renderMainScreen();
+    return;
+  }
+
+  renderMainScreen();
 }
 
 function showTutorial() {
@@ -526,8 +598,12 @@ function overlayBgAI(event) {
   if (event.target === $('aiSummaryOverlay')) closeAISummary();
 }
 
+function getShareUrl() {
+  return `${location.origin}/?s=${state.SID}`;
+}
+
 function openShare() {
-  $('shUrl').textContent = location.href;
+  $('shUrl').textContent = getShareUrl();
   $('shPeopleStat').textContent = `当前已有 ${state.S.participants.length} 人填写数据。`;
   $('shareOverlay').classList.add('open');
 }
@@ -541,7 +617,7 @@ function overlayBg(event) {
 }
 
 function copyUrl() {
-  const url = location.href;
+  const url = getShareUrl();
   const done = () => {
     toast('已复制，发到群里即可');
     closeShare();
@@ -568,6 +644,190 @@ function fallbackCopy(url, callback) {
   textarea.remove();
 }
 
+function renderManageParticipants() {
+  const list = $('manageParticipantsList');
+  if (!list) return;
+  list.innerHTML = state.manageParticipants.map(participant => `
+    <div class="manage-participant-row">
+      <span class="manage-participant-dot" style="background:${participant.color}"></span>
+      <input class="fi manage-participant-input" type="text" maxlength="10" value="${esc(participant.name)}"
+        oninput="updateManageParticipantName('${participant.id}', this.value)">
+      <button class="btn-s manage-row-remove" type="button" onclick="removeManageParticipant('${participant.id}')">移除</button>
+    </div>
+  `).join('');
+}
+
+function updateManagePromptCount() {
+  const input = $('managePrompt');
+  const value = (input?.value || '').slice(0, 200);
+  if (input && value !== input.value) input.value = value;
+  $('managePromptCount').textContent = `${value.length}/200`;
+}
+
+function addManageParticipant() {
+  const next = {
+    id: `tmp_${Date.now()}_${state.manageParticipants.length}`,
+    name: '',
+    color: COLORS[state.manageParticipants.length % COLORS.length],
+  };
+  state.manageParticipants.push(next);
+  renderManageParticipants();
+}
+
+function updateManageParticipantName(id, name) {
+  state.manageParticipants = state.manageParticipants.map(participant => (
+    participant.id === id ? { ...participant, name: String(name || '').slice(0, 10) } : participant
+  ));
+}
+
+function removeManageParticipant(id) {
+  state.manageParticipants = state.manageParticipants.filter(participant => participant.id !== id);
+  renderManageParticipants();
+}
+
+function openManageSession() {
+  if (!state.S?.capabilities?.canManageSession) return toast('只有创建者可以管理整张表');
+  $('manageName').value = state.S.name || '';
+  $('manageDateS').value = state.S.dateS || '';
+  $('manageDateE').value = state.S.dateE || '';
+  $('manageHourS').value = state.S.hourS;
+  $('manageHourE').value = state.S.hourE;
+  $('managePrompt').value = state.S.creatorPrompt || '';
+  $('manageExpectedNames').value = (state.S.expectedNames || []).join('\n');
+  state.manageParticipants = state.S.participants.map(participant => ({
+    id: participant.id,
+    name: participant.name,
+    color: participant.color,
+  }));
+  updateManagePromptCount();
+  renderManageParticipants();
+  $('manageOverlay').classList.add('open');
+}
+
+function closeManageSession() {
+  $('manageOverlay').classList.remove('open');
+}
+
+function overlayBgManage(event) {
+  if (event.target === $('manageOverlay')) closeManageSession();
+}
+
+function parseNameList(value) {
+  return String(value || '')
+    .split(/[\n,，]/)
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+async function saveManagedSession() {
+  try {
+    const payload = {
+      name: $('manageName').value.trim(),
+      dateS: $('manageDateS').value,
+      dateE: $('manageDateE').value,
+      hourS: Number($('manageHourS').value),
+      hourE: Number($('manageHourE').value),
+      creatorPrompt: ($('managePrompt').value || '').trim().slice(0, 200),
+      expectedNames: parseNameList($('manageExpectedNames').value),
+      participants: state.manageParticipants.map(participant => ({
+        id: participant.id.startsWith('tmp_') ? '' : participant.id,
+        name: participant.name.trim(),
+        color: participant.color,
+      })),
+    };
+    const updated = await requestJson(`/api/session/${state.SID}`, {
+      method: 'PATCH',
+      headers: sessionHeaders(),
+      body: payload,
+    });
+    applySession(updated.session);
+    if (state.ME) hydrateCurrentUser(state.ME, state.ME_NAME);
+    renderMainScreen();
+    renderJoin();
+    closeManageSession();
+    toast('表格已更新');
+  } catch (error) {
+    toast(getApiMessage(error, '保存失败，请重试'));
+  }
+}
+
+async function deleteCurrentSession() {
+  if (!state.S?.capabilities?.canDeleteSession) return toast('只有创建者可以删除整张表');
+  if (!window.confirm('确认删除整张表？此操作无法撤销。')) return;
+  try {
+    await requestJson(`/api/session/${state.SID}`, {
+      method: 'DELETE',
+      headers: sessionHeaders(),
+    });
+    clearSessionAccess(state.SID);
+    removeHistoryItem(state.SID);
+    toast('表格已删除');
+    setTimeout(() => { location.href = '/'; }, 500);
+  } catch (error) {
+    toast(getApiMessage(error, '删除失败，请重试'));
+  }
+}
+
+async function leaveCurrentSession() {
+  const access = getSessionAccess(state.SID);
+  const participantId = state.S?.viewer?.participantId || access.participantId;
+  if (!participantId) return toast('当前没有可退出的参与身份');
+  if (!window.confirm('确认从这张表中退出吗？')) return;
+  try {
+    await requestJson(`/api/session/${state.SID}/participants/${participantId}`, {
+      method: 'DELETE',
+      headers: sessionHeaders(),
+    });
+    clearParticipantAccess(state.SID);
+    state.ME = null;
+    state.ME_NAME = '';
+    state.myAvail = {};
+    state.myRemark = '';
+    const fresh = await requestJson(`/api/session/${state.SID}`, { headers: sessionHeaders() });
+    applySession(fresh);
+    renderJoin();
+    showScreen('joinScreen');
+    toast('你已退出这张表');
+  } catch (error) {
+    toast(getApiMessage(error, '退出失败，请重试'));
+  }
+}
+
+async function deleteSessionFromHistory(sid) {
+  if (!window.confirm('确认删除这张表？此操作无法撤销。')) return;
+  try {
+    await requestJson(`/api/session/${sid}`, {
+      method: 'DELETE',
+      headers: sessionHeaders(sid),
+    });
+    clearSessionAccess(sid);
+    removeHistoryItem(sid);
+    renderHistoryScreen();
+    renderHistoryCard();
+    toast('表格已删除');
+  } catch (error) {
+    toast(getApiMessage(error, '删除失败，请重试'));
+  }
+}
+
+async function leaveSessionFromHistory(sid) {
+  const access = getSessionAccess(sid);
+  if (!access.participantId) return toast('当前没有可退出的参与身份');
+  if (!window.confirm('确认退出这张表吗？')) return;
+  try {
+    await requestJson(`/api/session/${sid}/participants/${access.participantId}`, {
+      method: 'DELETE',
+      headers: sessionHeaders(sid),
+    });
+    clearParticipantAccess(sid);
+    renderHistoryScreen();
+    renderHistoryCard();
+    toast('已退出该表格');
+  } catch (error) {
+    toast(getApiMessage(error, '退出失败，请重试'));
+  }
+}
+
 async function init() {
   document.addEventListener('mouseup', endDrag);
   document.addEventListener('touchend', endDrag);
@@ -578,10 +838,7 @@ async function init() {
 
   if (state.SID) {
     try {
-      state.S = await requestJson(`/api/session/${state.SID}`);
-      state.S.participants.forEach(participant => {
-        participant.avail = normalizeAvail(participant.avail);
-      });
+      applySession(await requestJson(`/api/session/${state.SID}`, { headers: sessionHeaders() }));
       if (state.AUTO_JOIN && restoreParticipant(true)) return;
       renderJoin();
       showScreen('joinScreen');
@@ -608,20 +865,31 @@ Object.assign(window, {
   goToHome,
   goToSession,
   goToSetup,
+  leaveCurrentSession,
+  leaveSessionFromHistory,
   joinSession,
+  openManageSession,
   openAISummary,
   openShare,
   overlayBg,
   overlayBgAI,
+  overlayBgManage,
   pickChip,
+  removeManageParticipant,
   removeTag,
   resumeSession,
+  saveManagedSession,
   setLayout,
   showTutorial,
   skipTutorial,
   switchUser,
   toggleCollapse,
+  updateManageParticipantName,
   viewOnly,
+  addManageParticipant,
+  closeManageSession,
+  deleteCurrentSession,
+  deleteSessionFromHistory,
 });
 
 void init();

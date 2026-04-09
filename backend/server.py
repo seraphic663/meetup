@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from flask import Flask, g, jsonify, request, send_from_directory
+import hashlib
 import logging
 import json
 import os
@@ -16,9 +17,11 @@ import requests
 from werkzeug.exceptions import HTTPException
 
 app = Flask(__name__)
-BASE = os.path.dirname(os.path.abspath(__file__))
-ASSETS_DIR = os.path.join(BASE, "assets")
-DB_PATH = os.environ.get("DB_PATH", os.path.join(BASE, "sessions", "sessions.db"))
+MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(MODULE_DIR)
+FRONTEND_DIR = os.path.join(ROOT_DIR, "frontend")
+STATIC_DIR = os.path.join(FRONTEND_DIR, "static")
+DB_PATH = os.environ.get("DB_PATH", os.path.join(ROOT_DIR, "sessions", "sessions.db"))
 DB_USES_URI = DB_PATH.startswith("file:")
 KEEPALIVE_DB = None
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
@@ -31,9 +34,11 @@ PERSON_NAME_MAX = 10
 PROMPT_MAX = 200
 REMARK_MAX = 200
 EXPECTED_NAMES_MAX = 12
+MAX_PARTICIPANTS = 24
 MAX_RANGE_DAYS = 14
 VALID_STATES = {0, 1, 2}
 COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+SCHEMA_VERSION = 2
 
 logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO))
 logger = logging.getLogger("meetup")
@@ -114,21 +119,40 @@ def _load(sid: str):
     sid = _sanitize_sid(sid)
     with get_db() as db:
         row = db.execute("SELECT data FROM sessions WHERE id=?", (sid,)).fetchone()
-        return json.loads(row["data"]) if row else None
+        return _normalize_session_data(json.loads(row["data"])) if row else None
 
 
 def _save(sid: str, payload: dict) -> None:
     sid = _sanitize_sid(sid)
+    normalized = _normalize_session_data(payload) or payload
+    normalized["id"] = sid
     with get_db() as db:
         db.execute(
             "INSERT OR REPLACE INTO sessions(id,data,ts) VALUES(?,?,?)",
-            (sid, json.dumps(payload, ensure_ascii=False), int(time.time())),
+            (sid, json.dumps(normalized, ensure_ascii=False), int(time.time())),
         )
         db.commit()
 
 
 def _clean_text(value, limit: int) -> str:
     return str(value or "").strip()[:limit]
+
+
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(str(token or "").encode("utf-8")).hexdigest()
+
+
+def _new_token() -> str:
+    return secrets.token_urlsafe(24)
+
+
+def _new_participant_id() -> str:
+    return secrets.token_hex(6)
+
+
+def _legacy_participant_id(name: str) -> str:
+    digest = hashlib.sha1(str(name or "").encode("utf-8")).hexdigest()[:10]
+    return f"legacy_{digest}"
 
 
 def _parse_date(value):
@@ -141,6 +165,13 @@ def _parse_date(value):
 def _safe_color(value: str | None, fallback: str = "#FF6B35") -> str:
     text = str(value or "").strip()
     return text if COLOR_RE.fullmatch(text) else fallback
+
+
+def _delete(sid: str) -> None:
+    sid = _sanitize_sid(sid)
+    with get_db() as db:
+        db.execute("DELETE FROM sessions WHERE id=?", (sid,))
+        db.commit()
 
 
 def _iter_dates(session_data: dict):
@@ -170,7 +201,79 @@ def _dedupe_names(values, exclude: str | None = None):
     return names
 
 
-def _validate_create_payload(body: dict):
+def _normalize_participants(session_data: dict, raw_participants, existing_by_id: dict | None = None):
+    participants = []
+    seen_names = set()
+    seen_ids = set()
+    existing_by_id = existing_by_id or {}
+
+    for raw in raw_participants or []:
+        if not isinstance(raw, dict):
+            continue
+
+        name = _clean_text(raw.get("name"), PERSON_NAME_MAX)
+        if not name or name in seen_names:
+            continue
+
+        raw_id = _clean_text(raw.get("id"), 32)
+        existing = existing_by_id.get(raw_id) if raw_id else None
+        participant_id = raw_id or (existing.get("id") if existing else "") or _legacy_participant_id(name)
+        if participant_id in seen_ids:
+            participant_id = _new_participant_id()
+
+        fallback_color = (existing or {}).get("color") or "#FF6B35"
+        participant = {
+            "id": participant_id,
+            "name": name,
+            "color": _safe_color(raw.get("color"), fallback_color),
+            "avail": _normalize_avail(session_data, raw.get("avail") if "avail" in raw else (existing or {}).get("avail", {})),
+            "remark": _clean_text(raw.get("remark") if "remark" in raw else (existing or {}).get("remark"), REMARK_MAX),
+        }
+
+        token_hash = _clean_text(raw.get("tokenHash") if "tokenHash" in raw else (existing or {}).get("tokenHash"), 128)
+        if token_hash:
+            participant["tokenHash"] = token_hash
+
+        seen_ids.add(participant_id)
+        seen_names.add(name)
+        participants.append(participant)
+
+    return participants
+
+
+def _normalize_session_data(raw_data: dict | None):
+    if not isinstance(raw_data, dict):
+        return None
+
+    payload = {
+        "id": _sanitize_sid(raw_data.get("id")),
+        "schemaVersion": int(raw_data.get("schemaVersion") or 1),
+        "name": _clean_text(raw_data.get("name"), SESSION_NAME_MAX),
+        "dateS": _parse_date(raw_data.get("dateS")).isoformat() if _parse_date(raw_data.get("dateS")) else "",
+        "dateE": _parse_date(raw_data.get("dateE")).isoformat() if _parse_date(raw_data.get("dateE")) else "",
+        "hourS": int(raw_data.get("hourS", 9)) if str(raw_data.get("hourS", 9)).isdigit() else 9,
+        "hourE": int(raw_data.get("hourE", 21)) if str(raw_data.get("hourE", 21)).isdigit() else 21,
+        "creatorPrompt": _clean_text(raw_data.get("creatorPrompt"), PROMPT_MAX),
+    }
+
+    creator = raw_data.get("creator")
+    if isinstance(creator, dict):
+        creator_name = _clean_text(creator.get("name"), PERSON_NAME_MAX)
+        creator_token_hash = _clean_text(creator.get("tokenHash"), 128)
+        if creator_name or creator_token_hash:
+            payload["creator"] = {}
+            if creator_name:
+                payload["creator"]["name"] = creator_name
+            if creator_token_hash:
+                payload["creator"]["tokenHash"] = creator_token_hash
+
+    exclude_name = payload.get("creator", {}).get("name")
+    payload["expectedNames"] = _dedupe_names(raw_data.get("expectedNames", []), exclude=exclude_name)
+    payload["participants"] = _normalize_participants(payload, raw_data.get("participants", []))
+    return payload
+
+
+def _validate_create_payload(body: dict, creator_name: str | None = None):
     name = _clean_text(body.get("name"), SESSION_NAME_MAX)
     creator_prompt = _clean_text(body.get("creatorPrompt"), PROMPT_MAX)
     date_s = _parse_date(body.get("dateS"))
@@ -200,7 +303,7 @@ def _validate_create_payload(body: dict):
         "hourS": hour_s,
         "hourE": hour_e,
         "creatorPrompt": creator_prompt,
-        "expectedNames": _dedupe_names(body.get("expectedNames", [])),
+        "expectedNames": _dedupe_names(body.get("expectedNames", []), exclude=creator_name),
         "participants": [],
     }
     return payload, errors
@@ -231,6 +334,89 @@ def _normalize_avail(session_data: dict, raw_avail):
         if day_payload:
             normalized[session_date] = day_payload
     return normalized
+
+
+def _viewer_context(session_data: dict):
+    creator = session_data.get("creator", {})
+    creator_token = _clean_text(request.headers.get("X-Creator-Token"), 256)
+    participant_token = _clean_text(request.headers.get("X-Participant-Token"), 256)
+
+    is_creator = bool(creator.get("tokenHash") and creator_token and _hash_token(creator_token) == creator.get("tokenHash"))
+    participant = None
+    if participant_token:
+        participant_hash = _hash_token(participant_token)
+        participant = next(
+            (item for item in session_data.get("participants", []) if item.get("tokenHash") == participant_hash),
+            None,
+        )
+    return {
+        "is_creator": is_creator,
+        "creator_token": creator_token,
+        "participant": participant,
+        "participant_token": participant_token,
+    }
+
+
+def _public_session(session_data: dict):
+    viewer = _viewer_context(session_data)
+    creator = session_data.get("creator", {})
+    legacy_delete = not creator.get("tokenHash")
+    return {
+        "id": session_data.get("id"),
+        "schemaVersion": session_data.get("schemaVersion", 1),
+        "name": session_data.get("name", ""),
+        "dateS": session_data.get("dateS", ""),
+        "dateE": session_data.get("dateE", ""),
+        "hourS": session_data.get("hourS", 9),
+        "hourE": session_data.get("hourE", 21),
+        "creatorPrompt": session_data.get("creatorPrompt", ""),
+        "creatorName": creator.get("name", ""),
+        "expectedNames": session_data.get("expectedNames", []),
+        "participants": [
+            {
+                "id": participant.get("id"),
+                "name": participant.get("name"),
+                "color": participant.get("color"),
+                "avail": participant.get("avail", {}),
+                "remark": participant.get("remark", ""),
+            }
+            for participant in session_data.get("participants", [])
+        ],
+        "viewer": {
+            "isCreator": viewer["is_creator"],
+            "participantId": viewer["participant"].get("id") if viewer["participant"] else None,
+            "participantName": viewer["participant"].get("name") if viewer["participant"] else "",
+        },
+        "capabilities": {
+            "canManageSession": viewer["is_creator"],
+            "canDeleteSession": viewer["is_creator"] or legacy_delete,
+            "canManageParticipants": viewer["is_creator"],
+            "canLeaveSession": bool(viewer["participant"]),
+            "canEditOwnAvailability": bool(viewer["participant"]),
+        },
+    }
+
+
+def _creator_required(session_data: dict):
+    viewer = _viewer_context(session_data)
+    if viewer["is_creator"]:
+        return viewer
+    return None
+
+
+def _participant_for_write(session_data: dict, body_name: str | None = None):
+    viewer = _viewer_context(session_data)
+    if viewer["participant"]:
+        return viewer["participant"]
+
+    name = _clean_text(body_name, PERSON_NAME_MAX)
+    if not name:
+        return None
+
+    participant = next((item for item in session_data.get("participants", []) if item.get("name") == name), None)
+    if participant and not participant.get("tokenHash") and not session_data.get("creator", {}).get("tokenHash"):
+        return participant
+    return None
 
 
 def _participant_has_input(participant: dict) -> bool:
@@ -459,22 +645,17 @@ def handle_unexpected_exception(exc: Exception):
 
 @app.route("/")
 def root():
-    return send_from_directory(BASE, "index.html")
+    return send_from_directory(FRONTEND_DIR, "index.html")
 
 
 @app.route("/styles.css")
 def styles():
-    return send_from_directory(BASE, "styles.css")
+    return send_from_directory(FRONTEND_DIR, "styles.css")
 
 
-@app.route("/assets/<path:filename>")
+@app.route("/static/<path:filename>")
 def assets(filename):
-    return send_from_directory(ASSETS_DIR, filename)
-
-
-@app.route("/app.js")
-def app_js():
-    return send_from_directory(os.path.join(ASSETS_DIR, "js"), "app.js")
+    return send_from_directory(STATIC_DIR, filename)
 
 
 @app.route("/healthz")
@@ -488,12 +669,21 @@ def create():
         body = _json_body()
     except ValueError as exc:
         return _api_error("invalid_json", 400, str(exc))
-    payload, errors = _validate_create_payload(body)
+    creator_name = _clean_text(body.get("creatorName"), PERSON_NAME_MAX)
+    payload, errors = _validate_create_payload(body, creator_name=creator_name)
+    if not creator_name:
+        errors.append("创建者昵称不能为空")
     if errors:
         return _api_error("invalid_payload", 400, "请求参数不合法", errors)
 
     sid = secrets.token_hex(4)
+    creator_token = _new_token()
     payload["id"] = sid
+    payload["schemaVersion"] = SCHEMA_VERSION
+    payload["creator"] = {
+        "name": creator_name,
+        "tokenHash": _hash_token(creator_token),
+    }
     _save(sid, payload)
     _log_event(
         "info",
@@ -501,15 +691,16 @@ def create():
         request_id=_request_id(),
         session_id=sid,
         name=payload["name"],
+        creator=creator_name,
         expected_count=len(payload["expectedNames"]),
     )
-    return jsonify({"id": sid})
+    return jsonify({"id": sid, "creatorToken": creator_token})
 
 
 @app.route("/api/session/<sid>")
 def read(sid):
     session_data = _load(sid)
-    return jsonify(session_data) if session_data else _api_error("not_found", 404, "会话不存在")
+    return jsonify(_public_session(session_data)) if session_data else _api_error("not_found", 404, "会话不存在")
 
 
 @app.route("/api/session/<sid>/join", methods=["POST"])
@@ -528,13 +719,17 @@ def join(sid):
 
     participants = session_data.setdefault("participants", [])
     existing = next((item for item in participants if item.get("name") == name), None)
+    participant_token = None
     if existing is None:
+        participant_token = _new_token()
         participants.append(
             {
+                "id": _new_participant_id(),
                 "name": name,
                 "color": _safe_color(body.get("color")),
                 "avail": {},
                 "remark": "",
+                "tokenHash": _hash_token(participant_token),
             }
         )
         _save(sid, session_data)
@@ -546,7 +741,32 @@ def join(sid):
             participant=name,
             participant_count=len(participants),
         )
-    return jsonify(session_data)
+        existing = participants[-1]
+    else:
+        viewer = _viewer_context(session_data)
+        if existing.get("tokenHash"):
+            if not viewer["participant"] or viewer["participant"].get("id") != existing.get("id"):
+                return _api_error("name_taken", 409, "这个昵称已在其他设备使用，请换个昵称或在原设备继续")
+            participant_token = viewer["participant_token"]
+        else:
+            participant_token = _new_token()
+            existing["tokenHash"] = _hash_token(participant_token)
+            _save(sid, session_data)
+
+    public_session = _public_session(session_data)
+    public_session["viewer"]["participantId"] = existing.get("id")
+    public_session["viewer"]["participantName"] = existing.get("name")
+    public_session["capabilities"]["canLeaveSession"] = True
+    public_session["capabilities"]["canEditOwnAvailability"] = True
+
+    return jsonify(
+        {
+            "session": public_session,
+            "participantToken": participant_token,
+            "participantId": existing.get("id"),
+            "participantName": existing.get("name"),
+        }
+    )
 
 
 @app.route("/api/session/<sid>/avail", methods=["PUT"])
@@ -559,10 +779,9 @@ def avail(sid):
         body = _json_body()
     except ValueError as exc:
         return _api_error("invalid_json", 400, str(exc))
-    name = _clean_text(body.get("name"), PERSON_NAME_MAX)
-    participant = next((item for item in session_data.get("participants", []) if item.get("name") == name), None)
+    participant = _participant_for_write(session_data, body.get("name"))
     if participant is None:
-        return _api_error("participant_not_found", 404, "参与者不存在")
+        return _api_error("participant_auth_required", 403, "需要先以参与者身份进入后才能填写")
 
     participant["avail"] = _normalize_avail(session_data, body.get("avail", {}))
     if "remark" in body:
@@ -573,11 +792,119 @@ def avail(sid):
         "availability_saved",
         request_id=_request_id(),
         session_id=sid,
-        participant=name,
+        participant=participant.get("name"),
         date_count=len(participant["avail"]),
         remark_len=len(participant.get("remark", "")),
     )
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "participantId": participant.get("id")})
+
+
+@app.route("/api/session/<sid>", methods=["PATCH"])
+def update_session(sid):
+    session_data = _load(sid)
+    if not session_data:
+        return _api_error("not_found", 404, "会话不存在")
+
+    if not _creator_required(session_data):
+        return _api_error("creator_auth_required", 403, "只有创建者可以修改整张表")
+
+    try:
+        body = _json_body()
+    except ValueError as exc:
+        return _api_error("invalid_json", 400, str(exc))
+
+    merged_payload, errors = _validate_create_payload(
+        {
+            "name": body.get("name", session_data.get("name")),
+            "dateS": body.get("dateS", session_data.get("dateS")),
+            "dateE": body.get("dateE", session_data.get("dateE")),
+            "hourS": body.get("hourS", session_data.get("hourS")),
+            "hourE": body.get("hourE", session_data.get("hourE")),
+            "creatorPrompt": body.get("creatorPrompt", session_data.get("creatorPrompt")),
+            "expectedNames": body.get("expectedNames", session_data.get("expectedNames", [])),
+        },
+        creator_name=session_data.get("creator", {}).get("name"),
+    )
+
+    raw_participants = body.get("participants", session_data.get("participants", []))
+    if not isinstance(raw_participants, list):
+        errors.append("参与者名单格式不正确")
+        raw_participants = session_data.get("participants", [])
+
+    existing_by_id = {participant.get("id"): participant for participant in session_data.get("participants", [])}
+    normalized_participants = _normalize_participants(merged_payload, raw_participants, existing_by_id=existing_by_id)
+
+    if len(normalized_participants) != len(raw_participants):
+        errors.append("参与者名单存在空昵称或重复昵称")
+    if len(normalized_participants) > MAX_PARTICIPANTS:
+        errors.append(f"参与者最多 {MAX_PARTICIPANTS} 人")
+
+    if errors:
+        return _api_error("invalid_payload", 400, "请求参数不合法", errors)
+
+    session_data.update(merged_payload)
+    session_data["participants"] = normalized_participants
+    session_data["schemaVersion"] = SCHEMA_VERSION
+    _save(sid, session_data)
+    _log_event(
+        "info",
+        "session_updated",
+        request_id=_request_id(),
+        session_id=sid,
+        participant_count=len(session_data.get("participants", [])),
+        expected_count=len(session_data.get("expectedNames", [])),
+    )
+    return jsonify({"session": _public_session(session_data)})
+
+
+@app.route("/api/session/<sid>", methods=["DELETE"])
+def delete_session(sid):
+    session_data = _load(sid)
+    if not session_data:
+        return _api_error("not_found", 404, "会话不存在")
+
+    legacy_session = not session_data.get("creator", {}).get("tokenHash")
+    if not legacy_session and not _creator_required(session_data):
+        return _api_error("creator_auth_required", 403, "只有创建者可以删除整张表")
+
+    _delete(sid)
+    _log_event(
+        "info",
+        "session_deleted",
+        request_id=_request_id(),
+        session_id=sid,
+        mode="legacy_open_delete" if legacy_session else "creator_only",
+    )
+    return jsonify({"ok": True, "legacy": legacy_session})
+
+
+@app.route("/api/session/<sid>/participants/<pid>", methods=["DELETE"])
+def delete_participant(sid, pid):
+    session_data = _load(sid)
+    if not session_data:
+        return _api_error("not_found", 404, "会话不存在")
+
+    participants = session_data.get("participants", [])
+    target = next((item for item in participants if item.get("id") == _clean_text(pid, 32)), None)
+    if target is None:
+        return _api_error("participant_not_found", 404, "参与者不存在")
+
+    viewer = _viewer_context(session_data)
+    can_delete = viewer["is_creator"] or (viewer["participant"] and viewer["participant"].get("id") == target.get("id"))
+    if not can_delete:
+        return _api_error("participant_auth_required", 403, "只有创建者或参与者本人可以执行此操作")
+
+    session_data["participants"] = [item for item in participants if item.get("id") != target.get("id")]
+    _save(sid, session_data)
+    _log_event(
+        "info",
+        "participant_deleted",
+        request_id=_request_id(),
+        session_id=sid,
+        participant=target.get("name"),
+        actor="creator" if viewer["is_creator"] else "self",
+    )
+    return jsonify({"ok": True, "participantId": target.get("id")})
 
 
 @app.route("/api/session/<sid>/summary", methods=["GET"])
@@ -596,7 +923,7 @@ def summary(sid):
     return jsonify({"summary": summary_text})
 
 
-if __name__ == "__main__":
+def main():
     import socket
 
     try:
@@ -609,3 +936,7 @@ if __name__ == "__main__":
     print(f"  📱   局域网访问： http://{ip}:5000")
     print(f"\n  Ctrl+C 停止服务\n{'=' * 52}\n")
     app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
+
+
+if __name__ == "__main__":
+    main()
