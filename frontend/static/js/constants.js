@@ -25,3 +25,10 @@ export const TUTORIAL_STEPS = [
   { emoji: '3️⃣', title: '切换布局查看', desc: '时间为行 vs 人员为行，两种视角全面了解情况。' },
   { emoji: '4️⃣', title: '分享链接邀请', desc: '复制链接，发微信群，朋友点链接选名字就能填。' },
 ];
+
+export const CHANGELOG_ITEMS = [
+  { version: '4.2', title: '表格管理版', date: '2026-04-09', summary: '创建者可改整张表、删整表、改参与者名单，参与者可主动退出。' },
+  { version: '4.1', title: '模块化硬化版', date: '2026-03-30', summary: '前端模块化拆分，CI、备份和 API 基线补齐。' },
+  { version: '4.0', title: '会话打磨版', date: '2026-03-29', summary: 'UI 与会话流程整体打磨，进入阶段性跃迁。' },
+  { version: '3.3', title: '发起人提示版', date: '2026-03-26', summary: '支持发起人为表格补充提示语。' },
+];

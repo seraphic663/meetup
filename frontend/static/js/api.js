@@ -37,8 +37,8 @@ function extractError(payload, status) {
   });
 }
 
-export async function requestJson(url, { method = 'GET', body = null } = {}) {
-  const options = { method, headers: {} };
+export async function requestJson(url, { method = 'GET', body = null, headers = {} } = {}) {
+  const options = { method, headers: { ...headers } };
   if (body) {
     options.headers['Content-Type'] = 'application/json';
     options.body = JSON.stringify(body);

@@ -2,6 +2,8 @@
 
 多人时间协调工具。创建一张时间表，参与者各自填写有空 / 没空，一眼看出最优时段。
 
+版本演进记录见 [docs/更新日志.md](docs/更新日志.md)。以后每次 GitHub 更新都需要同步维护这份文档。
+
 **线上地址：** https://find-time.up.railway.app/
 
 ---
@@ -12,6 +14,8 @@
 - 创建后自动把发起人加入表格并进入填写页
 - 发起人可设置提示语，所有参与者可见
 - 参与者点格子填写可用时间（有空 / 没空 / 未填）
+- 创建者可修改整张表并维护参与者名单
+- 参与者可退出自己加入过的表格
 - 热力图叠加，直观显示时段重合度
 - AI 智能总结（优先 DeepSeek，未配置时自动降级为本地总结）
 - 历史记录（localStorage，最近 5 条）
@@ -75,14 +79,14 @@ python run.py
 ## 文件结构
 
 ```
-server.py              # Flask 后端
-index.html             # 页面结构
-styles.css             # 样式
-assets/js/             # 前端模块（入口 / 状态 / API / 渲染等）
+backend/               # Flask 后端实现
+frontend/              # HTML / CSS 与前端模块
+docs/                  # 项目文档
+tests/                 # 接口冒烟测试
+scripts/               # 安全扫描与辅助脚本
 run.py                 # 本地启动脚本
 启动.ps1               # Windows 启动脚本
 Procfile               # Railway 部署配置
-.github/workflows/     # CI 配置
 requirements.txt
 sessions/              # SQLite 数据库目录（本地）
 ```
@@ -140,7 +144,7 @@ python scripts/security_guard.py --workspace --history
 已落地：
 - 仅通过环境变量读取 `DEEPSEEK_API_KEY`（不在代码中硬编码）
 - 提供本地扫描脚本：`scripts/security_guard.py`
-- 提供应急与历史治理文档：`docs/安全收口执行清单_2026-03-19.md`
+- 提供应急与历史治理文档：`docs/安全收口执行清单.md`
 - 提供提交前防护：`.githooks/pre-commit`
 - 提供 CI 基线：`.github/workflows/ci.yml`
 - 提供备份恢复 SOP：`docs/backup_restore.md`

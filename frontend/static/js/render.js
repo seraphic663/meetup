@@ -1,10 +1,11 @@
-import { COLORS, ST_AVAIL, ST_BUSY, WD } from './constants.js';
-import { loadHistory, getLastName, getSavedParticipantName } from './history.js';
+import { CHANGELOG_ITEMS, COLORS, ST_AVAIL, ST_BUSY, WD } from './constants.js';
+import { getLastName, getSavedParticipantName, getSessionAccess, loadHistory } from './history.js';
 import { state } from './state.js';
 import { $, esc, fmtRange, getDates, getHours, getState, lerp, pad } from './helpers.js';
 
 export function renderHistoryCard() {
   const history = loadHistory();
+  renderHomeChangelog();
   if (history.length > 0) {
     $('historyCard').classList.remove('hidden');
     $('historyList').innerHTML = history.slice(0, 3).map(item => (
@@ -19,13 +20,43 @@ export function renderHistoryCard() {
 export function renderHistoryScreen() {
   const history = loadHistory();
   $('historyListFull').innerHTML = history.length > 0
-    ? history.map(item => `<button class="history-entry" type="button" onclick="goToSession('${item.id}')">
+    ? history.map(item => {
+      const access = getSessionAccess(item.id);
+      const actions = [
+        `<button class="history-action-btn" type="button" onclick="event.stopPropagation(); goToSession('${item.id}')">打开</button>`,
+      ];
+
+      if (access.creatorToken || access.legacyCanDelete) {
+        actions.push(`<button class="history-action-btn danger" type="button" onclick="event.stopPropagation(); deleteSessionFromHistory('${item.id}')">删除整表</button>`);
+      } else if (access.participantToken && access.participantId) {
+        actions.push(`<button class="history-action-btn" type="button" onclick="event.stopPropagation(); leaveSessionFromHistory('${item.id}')">退出参与</button>`);
+      }
+
+      const role = access.creatorToken ? '创建者' : (access.legacyCanDelete ? '旧表格' : (access.participantToken ? '参与者' : '访客'));
+      return `<div class="history-entry">
         <span class="history-entry-copy">
           <span class="history-entry-title">${esc(item.name)}</span>
-          <span class="history-entry-meta">${item.dateS} — ${item.dateE}</span>
+          <span class="history-entry-meta">${item.dateS} — ${item.dateE} · ${role}</span>
         </span>
-      </button>`).join('')
+        <span class="history-entry-actions">${actions.join('')}</span>
+      </div>`;
+    }).join('')
     : '<div class="history-entry-meta" style="text-align:center;padding:20px">还没有历史记录呢</div>';
+}
+
+export function renderHomeChangelog() {
+  const target = $('homeChangelogList');
+  if (!target) return;
+  target.innerHTML = CHANGELOG_ITEMS.map(item => `
+    <div class="log-item">
+      <div class="log-item-head">
+        <span class="log-item-version">v${esc(item.version)}</span>
+        <span class="log-item-date">${esc(item.date)}</span>
+      </div>
+      <div class="log-item-title">${esc(item.title)}</div>
+      <div class="log-item-summary">${esc(item.summary)}</div>
+    </div>
+  `).join('');
 }
 
 export function updateCollapseButton() {
@@ -64,7 +95,8 @@ export function renderJoin() {
 
 export function renderMain() {
   $('mTitle').textContent = state.S.name;
-  $('mSub').innerHTML = `<span class="live-dot"></span>${fmtRange(state.S)}${state.ME ? ' · 点击切换状态' : ' · 查看模式'}`;
+  const creatorName = state.S.creatorName ? ` · 创建者 ${esc(state.S.creatorName)}` : '';
+  $('mSub').innerHTML = `<span class="live-dot"></span>${fmtRange(state.S)}${state.ME ? ' · 点击切换状态' : ' · 查看模式'}${creatorName}`;
   renderBadges();
   renderCreatorPrompt('main');
 
@@ -104,7 +136,7 @@ export function updateRemarkHint(text) {
 export function renderBadges() {
   $('statsStrip').innerHTML = `<span class="s-lbl">参与者（${state.S.participants.length}人）：</span><div class="pbadges">${
     state.S.participants.map(participant => {
-      const isMe = participant.name === state.ME;
+      const isMe = participant.id === state.ME;
       return `<span class="pbadge${isMe ? ' me' : ''}"><span class="pdot" style="background:${participant.color}"></span>${esc(participant.name)}${isMe ? '（我）' : ''}</span>`;
     }).join('')
   }</div>`;
@@ -152,7 +184,7 @@ function renderDay(date) {
 
 function renderDayByTime(date) {
   const participants = state.S.participants;
-  const currentUserIndex = state.ME ? participants.findIndex(participant => participant.name === state.ME) : -1;
+  const currentUserIndex = state.ME ? participants.findIndex(participant => participant.id === state.ME) : -1;
   const hours = getHours(state.S);
   const myDayAvail = state.ME ? (state.myAvail[date] || {}) : {};
 
@@ -203,7 +235,7 @@ function renderDayByTime(date) {
 
 function renderDayByParticipant(date) {
   const participants = state.S.participants;
-  const currentUserIndex = state.ME ? participants.findIndex(participant => participant.name === state.ME) : -1;
+  const currentUserIndex = state.ME ? participants.findIndex(participant => participant.id === state.ME) : -1;
   const hours = getHours(state.S);
   const myDayAvail = state.ME ? (state.myAvail[date] || {}) : {};
 
