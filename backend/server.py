@@ -16,6 +16,8 @@ import time
 import requests
 from werkzeug.exceptions import HTTPException
 
+from .create_draft import AI_DRAFT_TEXT_MAX, generate_ai_create_draft, normalize_create_draft_defaults
+
 app = Flask(__name__, static_folder=None)
 MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(MODULE_DIR)
@@ -216,6 +218,20 @@ def _dedupe_names(values, exclude: str | None = None):
     return names
 
 
+def _normalize_required_names(values):
+    names = []
+    seen = set()
+    for value in values or []:
+        name = _clean_text(value, PERSON_NAME_MAX)
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        names.append(name)
+        if len(names) >= EXPECTED_NAMES_MAX:
+            break
+    return names
+
+
 def _normalize_participants(session_data: dict, raw_participants, existing_by_id: dict | None = None):
     participants = []
     seen_names = set()
@@ -255,6 +271,14 @@ def _normalize_participants(session_data: dict, raw_participants, existing_by_id
         participants.append(participant)
 
     return participants
+
+
+def _merge_required_names(raw_data: dict, participants):
+    required = []
+    if isinstance(raw_data, dict):
+        required.extend(raw_data.get("requiredNames", []))
+    required.extend(participant.get("name") for participant in participants if participant.get("isRequired"))
+    return _normalize_required_names(required)
 
 
 def _normalize_session_data(raw_data: dict | None):
@@ -298,6 +322,7 @@ def _normalize_session_data(raw_data: dict | None):
     exclude_name = payload.get("creator", {}).get("name")
     payload["expectedNames"] = _dedupe_names(raw_data.get("expectedNames", []), exclude=exclude_name)
     payload["participants"] = _normalize_participants(payload, raw_data.get("participants", []))
+    payload["requiredNames"] = _merge_required_names(raw_data, payload["participants"])
     return payload
 
 
@@ -348,6 +373,7 @@ def _validate_create_payload(body: dict, creator_name: str | None = None):
         "lastHourE": last_hour_e,
         "creatorPrompt": creator_prompt,
         "expectedNames": _dedupe_names(body.get("expectedNames", []), exclude=creator_name),
+        "requiredNames": _normalize_required_names(body.get("requiredNames", [])),
         "participants": [],
     }
     return payload, errors
@@ -452,6 +478,7 @@ def _public_session(session_data: dict):
         "creatorPrompt": session_data.get("creatorPrompt", ""),
         "creatorName": creator.get("name", ""),
         "expectedNames": session_data.get("expectedNames", []),
+        "requiredNames": session_data.get("requiredNames", []),
         "participants": [
             {
                 "id": participant.get("id"),
@@ -684,39 +711,42 @@ def _build_ai_prompt(session_data: dict, fallback_summary: str) -> str:
     )
 
 
+def _deepseek_chat(user_prompt: str, *, temperature: float, max_tokens: int):
+    if not DEEPSEEK_API_KEY:
+        raise RuntimeError("missing_api_key")
+
+    response = requests.post(
+        DEEPSEEK_API_URL,
+        headers={
+            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": "deepseek-chat",
+            "messages": [{"role": "user", "content": user_prompt}],
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        },
+        timeout=10,
+    )
+    if response.status_code != 200:
+        raise RuntimeError(f"upstream_status_{response.status_code}")
+
+    data = response.json()
+    choices = data.get("choices") or []
+    content = choices[0].get("message", {}).get("content") if choices else ""
+    if not content:
+        raise RuntimeError("empty_choice")
+    return content
+
+
 def generate_ai_summary(session_data: dict) -> str:
     fallback_summary = _build_local_summary(session_data)
     if not DEEPSEEK_API_KEY:
         return fallback_summary
 
     try:
-        response = requests.post(
-            DEEPSEEK_API_URL,
-            headers={
-                "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": "deepseek-chat",
-                "messages": [{"role": "user", "content": _build_ai_prompt(session_data, fallback_summary)}],
-                "temperature": 0.4,
-                "max_tokens": 500,
-            },
-            timeout=10,
-        )
-        if response.status_code == 200:
-            data = response.json()
-            choices = data.get("choices") or []
-            if choices and choices[0].get("message", {}).get("content"):
-                return choices[0]["message"]["content"]
-        _log_event(
-            "warning",
-            "ai_summary_failed",
-            request_id=_request_id(),
-            reason="upstream_error",
-            status_code=response.status_code,
-        )
-        return f"{fallback_summary}\n\n## 说明\n- AI 服务暂时不可用，已返回本地总结。"
+        return _deepseek_chat(_build_ai_prompt(session_data, fallback_summary), temperature=0.4, max_tokens=500)
     except requests.exceptions.Timeout:
         _log_event("warning", "ai_summary_failed", request_id=_request_id(), reason="timeout")
         return f"{fallback_summary}\n\n## 说明\n- AI 请求超时，已返回本地总结。"
@@ -838,8 +868,47 @@ def create():
         name=payload["name"],
         creator=creator_name,
         expected_count=len(payload["expectedNames"]),
+        required_count=len(payload.get("requiredNames", [])),
     )
     return jsonify({"id": sid, "creatorToken": creator_token})
+
+
+@app.route("/api/session/draft", methods=["POST"])
+def create_draft():
+    try:
+        body = _json_body()
+    except ValueError as exc:
+        return _api_error("invalid_json", 400, str(exc))
+
+    text = _clean_text(body.get("text"), AI_DRAFT_TEXT_MAX)
+    if not text:
+        return _api_error("invalid_payload", 400, "请求参数不合法", ["活动描述不能为空"])
+
+    defaults = normalize_create_draft_defaults(body.get("defaults"))
+    draft, notes, warnings, source = generate_ai_create_draft(
+        text,
+        defaults,
+        api_key=DEEPSEEK_API_KEY,
+        api_url=DEEPSEEK_API_URL,
+        request_id=_request_id(),
+        log_event=_log_event,
+    )
+    _log_event(
+        "info",
+        "session_draft_generated",
+        request_id=_request_id(),
+        source=source,
+        expected_count=len(draft.get("expectedNames", [])),
+        required_count=len(draft.get("requiredNames", [])),
+    )
+    return jsonify(
+        {
+            "draft": draft,
+            "notes": notes,
+            "warnings": warnings,
+            "source": source,
+        }
+    )
 
 
 @app.route("/api/session/<sid>")
@@ -874,7 +943,7 @@ def join(sid):
                 "color": _safe_color(body.get("color")),
                 "avail": {},
                 "remark": "",
-                "isRequired": False,
+                "isRequired": name in set(session_data.get("requiredNames", [])),
                 "tokenHash": _hash_token(participant_token),
             }
         )
@@ -970,6 +1039,7 @@ def update_session(sid):
             "lastHourE": body.get("lastHourE", session_data.get("lastHourE", session_data.get("hourE"))),
             "creatorPrompt": body.get("creatorPrompt", session_data.get("creatorPrompt")),
             "expectedNames": body.get("expectedNames", session_data.get("expectedNames", [])),
+            "requiredNames": body.get("requiredNames", session_data.get("requiredNames", [])),
         },
         creator_name=session_data.get("creator", {}).get("name"),
     )
@@ -992,6 +1062,12 @@ def update_session(sid):
 
     session_data.update(merged_payload)
     session_data["participants"] = normalized_participants
+    session_data["requiredNames"] = _merge_required_names(
+        {
+            "requiredNames": body.get("requiredNames", session_data.get("requiredNames", [])),
+        },
+        normalized_participants,
+    )
     session_data["schemaVersion"] = SCHEMA_VERSION
     _save(sid, session_data)
     _log_event(
@@ -1001,6 +1077,7 @@ def update_session(sid):
         session_id=sid,
         participant_count=len(session_data.get("participants", [])),
         expected_count=len(session_data.get("expectedNames", [])),
+        required_count=len(session_data.get("requiredNames", [])),
     )
     return jsonify({"session": _public_session(session_data)})
 

@@ -377,6 +377,62 @@ class TestApiSmoke(unittest.TestCase):
         self.assertIn("Alice", summary)
         self.assertIn("关键成员冲突", summary)
 
+    def test_14_create_draft_falls_back_and_returns_structured_payload(self):
+        previous_key = server.DEEPSEEK_API_KEY
+        server.DEEPSEEK_API_KEY = ""
+        try:
+            resp = self.client.post(
+                "/api/session/draft",
+                json={
+                    "text": "2026-04-14到2026-04-16晚上7点到9点约产品评审，Alice和Bob必须到场，参与者包括Alice、Bob、Carol，尽量线下。",
+                    "defaults": {
+                        "creatorName": "Host",
+                    },
+                },
+            )
+        finally:
+            server.DEEPSEEK_API_KEY = previous_key
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        draft = data.get("draft", {})
+        self.assertEqual(data.get("source"), "local")
+        self.assertEqual(draft.get("name"), "产品评审")
+        self.assertEqual(draft.get("dateS"), "2026-04-14")
+        self.assertEqual(draft.get("dateE"), "2026-04-16")
+        self.assertEqual(draft.get("hourS"), 19)
+        self.assertEqual(draft.get("hourE"), 21)
+        self.assertEqual(draft.get("requiredNames"), ["Alice", "Bob"])
+        self.assertEqual(draft.get("expectedNames"), ["Alice", "Bob", "Carol"])
+        self.assertIn("尽量线下", draft.get("creatorPrompt", ""))
+
+    def test_15_required_names_auto_apply_when_participant_joins(self):
+        draft_resp = self.client.post(
+            "/api/session/draft",
+            json={
+                "text": "2026-04-14到2026-04-16晚上7点到9点约产品评审，Alice和Bob必须到场，参与者包括Alice、Bob、Carol。",
+                "defaults": {"creatorName": "Host"},
+            },
+        )
+        self.assertEqual(draft_resp.status_code, 200)
+        draft = draft_resp.get_json().get("draft", {})
+
+        create_resp = self.client.post(
+            "/api/session",
+            json={
+                **draft,
+                "creatorName": "Host",
+            },
+        )
+        self.assertEqual(create_resp.status_code, 200)
+        sid = create_resp.get_json()["id"]
+
+        alice = self._join_session(sid, "Alice", "#00AAFF")
+        session = alice.get("session", {})
+        participant = next(item for item in session.get("participants", []) if item["name"] == "Alice")
+        self.assertEqual(session.get("requiredNames"), ["Alice", "Bob"])
+        self.assertEqual(participant.get("isRequired"), True)
+
 
 if __name__ == "__main__":
     unittest.main()

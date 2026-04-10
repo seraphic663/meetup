@@ -141,6 +141,107 @@ function validateTimeWindow(dateS, dateE, hourS, hourE, firstHourS, lastHourE) {
   return '';
 }
 
+function readCreateDraftDefaults() {
+  const { hourS, hourE, firstHourS, lastHourE } = readTimeControls('s');
+  return {
+    name: $('sName')?.value.trim() || '',
+    dateS: $('sDateS')?.value || '',
+    dateE: $('sDateE')?.value || '',
+    hourS,
+    hourE,
+    firstHourS,
+    lastHourE,
+    creatorName: $('sMyName')?.value.trim() || '',
+    creatorPrompt: ($('sPrompt')?.value || '').trim(),
+    expectedNames: [...state.tags],
+    requiredNames: state.aiCreateDraft?.draft?.requiredNames || [],
+  };
+}
+
+function formatDraftTime(draft) {
+  const { hourS, hourE, firstHourS, lastHourE, dateS, dateE } = draft;
+  if (dateS && dateE && dateS === dateE && hourS === firstHourS && hourE === lastHourE) {
+    return `${String(hourS).padStart(2, '0')}:00 - ${String(hourE).padStart(2, '0')}:00`;
+  }
+  const base = `${String(hourS).padStart(2, '0')}:00 - ${String(hourE).padStart(2, '0')}:00`;
+  if (hourS === firstHourS && hourE === lastHourE) return base;
+  return `${base}（首日 ${String(firstHourS).padStart(2, '0')}:00 起，末日 ${String(lastHourE).padStart(2, '0')}:00 止）`;
+}
+
+function renderCreateDraftPanel() {
+  const panel = $('aiDraftPanel');
+  if (!panel) return;
+  const result = state.aiCreateDraft;
+  if (!result?.draft) {
+    panel.classList.add('hidden');
+    panel.innerHTML = '';
+    return;
+  }
+
+  const { draft, notes = [], warnings = [], source } = result;
+  const sourceLabel = source === 'ai' ? 'AI 识别' : '本地规则';
+  const participants = draft.expectedNames?.length ? draft.expectedNames.join('、') : '未识别';
+  const required = draft.requiredNames?.length ? draft.requiredNames.join('、') : '无';
+  panel.innerHTML = `
+    <div class="ai-draft-head">
+      <div>
+        <div class="ai-draft-title">草稿已填入下方表单</div>
+        <div class="ai-draft-meta">你可以直接创建，也可以继续手动修改。</div>
+      </div>
+      <span class="ai-draft-badge">${esc(sourceLabel)}</span>
+    </div>
+    <div class="ai-draft-grid">
+      <div class="ai-draft-item">
+        <div class="ai-draft-label">活动名称</div>
+        <div class="ai-draft-value">${esc(draft.name || '未识别')}</div>
+      </div>
+      <div class="ai-draft-item">
+        <div class="ai-draft-label">日期范围</div>
+        <div class="ai-draft-value">${esc(draft.dateS)} ${draft.dateS === draft.dateE ? '' : `至 ${esc(draft.dateE)}`}</div>
+      </div>
+      <div class="ai-draft-item">
+        <div class="ai-draft-label">时间范围</div>
+        <div class="ai-draft-value">${esc(formatDraftTime(draft))}</div>
+      </div>
+      <div class="ai-draft-item">
+        <div class="ai-draft-label">预设参与者</div>
+        <div class="ai-draft-value">${esc(participants)}</div>
+      </div>
+      <div class="ai-draft-item">
+        <div class="ai-draft-label">关键成员</div>
+        <div class="ai-draft-value">${esc(required)}</div>
+      </div>
+      <div class="ai-draft-item">
+        <div class="ai-draft-label">发起人提示</div>
+        <div class="ai-draft-value">${esc(draft.creatorPrompt || '无')}</div>
+      </div>
+    </div>
+    ${notes.length ? `<div class="ai-draft-list"><div class="ai-draft-list-title">识别说明</div><ul>${notes.map(item => `<li>${esc(item)}</li>`).join('')}</ul></div>` : ''}
+    ${warnings.length ? `<div class="ai-draft-list warning"><div class="ai-draft-list-title">请再确认</div><ul>${warnings.map(item => `<li>${esc(item)}</li>`).join('')}</ul></div>` : ''}
+  `;
+  panel.classList.remove('hidden');
+}
+
+function applyCreateDraftToForm(draft) {
+  if (!draft) return;
+  if (draft.name) $('sName').value = draft.name;
+  if (draft.dateS) $('sDateS').value = draft.dateS;
+  if (draft.dateE) $('sDateE').value = draft.dateE;
+  $('sHourS').value = String(draft.hourS);
+  $('sHourE').value = String(draft.hourE);
+  syncBoundaryTimeControls('s');
+  $('sFirstHourS').value = String(draft.firstHourS);
+  $('sLastHourE').value = String(draft.lastHourE);
+  syncBoundaryTimeControls('s');
+  if (draft.creatorPrompt) {
+    $('sPrompt').value = draft.creatorPrompt;
+    updatePromptCount();
+  }
+  if (draft.creatorName && !$('sMyName').value.trim()) $('sMyName').value = draft.creatorName;
+  state.tags = [...(draft.expectedNames || [])];
+  renderTags();
+}
+
 function getCurrentParticipant() {
   return state.S?.participants?.find(item => item.id === state.ME) || null;
 }
@@ -279,6 +380,7 @@ function initForm() {
   $('sDateS').value = dfmt(now);
   $('sDateE').value = dfmt(later);
   $('sMyName').value = getLastName();
+  state.aiCreateDraft = null;
 
   syncBoundaryTimeControls('s');
   syncBoundaryTimeControls('manage');
@@ -307,6 +409,8 @@ function initForm() {
   $('managePrompt')?.addEventListener('input', updateManagePromptCount);
   updatePromptCount();
   updateManagePromptCount();
+  renderTags();
+  renderCreateDraftPanel();
 }
 
 async function createSession() {
@@ -317,6 +421,8 @@ async function createSession() {
   const myName = $('sMyName').value.trim();
   const creatorPrompt = ($('sPrompt')?.value || '').trim().slice(0, 200);
   const createBtn = $('createBtn');
+  const availableNames = [myName, ...state.tags];
+  const requiredNames = (state.aiCreateDraft?.draft?.requiredNames || []).filter(name => availableNames.includes(name));
 
   if (!name) return toast('请输入活动名称');
   if (!dateS || !dateE) return toast('请选择日期');
@@ -343,6 +449,7 @@ async function createSession() {
         creatorName: myName,
         creatorPrompt,
         expectedNames: state.tags.filter(tag => tag !== myName),
+        requiredNames,
       },
     });
     saveCreatorToken(created.id, created.creatorToken);
@@ -363,6 +470,33 @@ async function createSession() {
     toast(getApiMessage(error, '创建失败，请重试'));
     createBtn.textContent = '创建调查并进入填写';
     createBtn.disabled = false;
+  }
+}
+
+async function generateCreateDraft() {
+  const text = ($('sAIPrompt')?.value || '').trim().slice(0, 300);
+  const btn = $('createDraftBtn');
+  if (!text) return toast('先输入一句话活动描述');
+
+  btn.textContent = '识别中…';
+  btn.disabled = true;
+  try {
+    const result = await requestJson('/api/session/draft', {
+      method: 'POST',
+      body: {
+        text,
+        defaults: readCreateDraftDefaults(),
+      },
+    });
+    state.aiCreateDraft = result;
+    applyCreateDraftToForm(result.draft);
+    renderCreateDraftPanel();
+    toast('草稿已填入，下方可直接确认或继续修改');
+  } catch (error) {
+    toast(getApiMessage(error, 'AI 草稿生成失败，请重试'));
+  } finally {
+    btn.textContent = 'AI 识别并填充草稿';
+    btn.disabled = false;
   }
 }
 
@@ -1033,6 +1167,7 @@ Object.assign(window, {
   closeShare,
   copyUrl,
   createSession,
+  generateCreateDraft,
   fillPromptTemplate,
   focusTagInput,
   goToHistory,
