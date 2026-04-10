@@ -145,14 +145,25 @@
         </div>
         <div class="fi-row">
           <div class="fg">
-            <label class="fl" for="sHourS">起始时间</label>
+            <label class="fl" for="sHourS">每日起始时间</label>
             <select class="fi" id="sHourS"></select>
           </div>
           <div class="fg">
-            <label class="fl" for="sHourE">截止时间</label>
+            <label class="fl" for="sHourE">每日截止时间</label>
             <select class="fi" id="sHourE"></select>
           </div>
         </div>
+        <div class="fi-row">
+          <div class="fg">
+            <label class="fl" for="sFirstHourS">首日从几点开始</label>
+            <select class="fi" id="sFirstHourS"></select>
+          </div>
+          <div class="fg">
+            <label class="fl" for="sLastHourE">末日到几点结束</label>
+            <select class="fi" id="sLastHourE"></select>
+          </div>
+        </div>
+        <div class="tag-hint">用于首尾截断。中间日期仍按上面的每日时间范围显示和填写。</div>
         <div class="fg">
           <label class="fl" for="sPrompt">发起人提示语 <span class="field-optional">可选</span></label>
           <div class="prompt-helper">会展示给所有参与者，建议写清优先级与约束，例如线下优先、可晚到 15 分钟。</div>
@@ -261,13 +272,16 @@
       <button class="tb-btn active" id="btnTR" type="button" onclick="setLayout('tr')">时间为行</button>
       <button class="tb-btn" id="btnPR" type="button" onclick="setLayout('pr')">人员为行</button>
       <div class="tb-sep"></div>
-      <button class="tb-btn" id="btnCollapse" type="button" onclick="toggleCollapse()">展开他人</button>
+      <button class="tb-btn" id="btnExpandOthers" type="button" onclick="expandOthers()">展开他人</button>
+      <button class="tb-btn" id="btnCollapseOthers" type="button" onclick="collapseOthers()">折叠他人</button>
       <div class="tb-sep"></div>
+      <button class="tb-btn" id="btnPrefs" type="button" onclick="openUserSettings()">用户设置</button>
       <button class="tb-btn tb-btn-ghost" id="btnAISummary" type="button" onclick="openAISummary()">AI 总结</button>
       <div class="legend">
         <span class="lg-item"><span class="lg-box empty"></span>未填</span>
         <span class="lg-item"><span class="lg-box avail"></span>有空</span>
         <span class="lg-item"><span class="lg-box busy">✕</span>没空</span>
+        <span class="lg-item"><span class="lg-box blocked"></span>不可填</span>
       </div>
     </div>
 
@@ -334,58 +348,100 @@
   </div>
 </div>
 
+<div class="overlay" id="settingsOverlay" onclick="overlayBgSettings(event)">
+  <div class="sheet settings-sheet">
+    <div class="sh-bar"></div>
+    <div class="sh-title">用户设置</div>
+    <div class="settings-grid">
+      <div class="settings-block">
+        <div class="settings-title">默认布局</div>
+        <div class="settings-desc">进入表格后优先用哪个视角查看。</div>
+        <div class="settings-switch">
+          <button class="tb-btn" id="prefLayoutTR" type="button" onclick="setSettingsLayout('tr')">时间为行</button>
+          <button class="tb-btn" id="prefLayoutPR" type="button" onclick="setSettingsLayout('pr')">人员为行</button>
+        </div>
+      </div>
+      <div class="settings-block">
+        <div class="settings-title">默认展示</div>
+        <div class="settings-desc">进入表格后是否先折叠其他参与者。</div>
+        <div class="settings-switch">
+          <button class="tb-btn" id="prefCollapseOff" type="button" onclick="setSettingsCollapse(false)">展开他人</button>
+          <button class="tb-btn" id="prefCollapseOn" type="button" onclick="setSettingsCollapse(true)">折叠他人</button>
+        </div>
+      </div>
+    </div>
+    <button class="btn-p" type="button" onclick="saveUserViewPreferences()">保存设置</button>
+    <button class="btn-s" type="button" onclick="closeUserSettings()">关闭</button>
+  </div>
+</div>
+
 <div class="overlay" id="manageOverlay" onclick="overlayBgManage(event)">
   <div class="sheet manage-sheet">
     <div class="sh-bar"></div>
     <div class="sh-title">管理表格</div>
-    <div class="manage-grid">
-      <div class="fg">
-        <label class="fl" for="manageName">活动名称</label>
-        <input class="fi" type="text" id="manageName" maxlength="20">
-      </div>
-      <div class="fi-row">
+    <div class="manage-sheet-body">
+      <div class="manage-grid">
         <div class="fg">
-          <label class="fl" for="manageDateS">开始日期</label>
-          <input class="fi" type="date" id="manageDateS">
+          <label class="fl" for="manageName">活动名称</label>
+          <input class="fi" type="text" id="manageName" maxlength="20">
+        </div>
+        <div class="fi-row">
+          <div class="fg">
+            <label class="fl" for="manageDateS">开始日期</label>
+            <input class="fi" type="date" id="manageDateS">
+          </div>
+          <div class="fg">
+            <label class="fl" for="manageDateE">结束日期</label>
+            <input class="fi" type="date" id="manageDateE">
+          </div>
+        </div>
+        <div class="fi-row">
+          <div class="fg">
+            <label class="fl" for="manageHourS">每日起始时间</label>
+            <select class="fi" id="manageHourS"></select>
+          </div>
+          <div class="fg">
+            <label class="fl" for="manageHourE">每日截止时间</label>
+            <select class="fi" id="manageHourE"></select>
+          </div>
+        </div>
+        <div class="fi-row">
+          <div class="fg">
+            <label class="fl" for="manageFirstHourS">首日从几点开始</label>
+            <select class="fi" id="manageFirstHourS"></select>
+          </div>
+          <div class="fg">
+            <label class="fl" for="manageLastHourE">末日到几点结束</label>
+            <select class="fi" id="manageLastHourE"></select>
+          </div>
+        </div>
+        <div class="tag-hint">用于首尾截断。中间日期仍按上面的每日时间范围显示和填写。</div>
+        <div class="fg">
+          <label class="fl" for="managePrompt">发起人提示语</label>
+          <textarea class="fi prompt-input" id="managePrompt" maxlength="200"></textarea>
+          <div class="prompt-tools">
+            <div class="tag-hint">修改后会同步给所有参与者。</div>
+            <div class="prompt-count" id="managePromptCount">0/200</div>
+          </div>
         </div>
         <div class="fg">
-          <label class="fl" for="manageDateE">结束日期</label>
-          <input class="fi" type="date" id="manageDateE">
-        </div>
-      </div>
-      <div class="fi-row">
-        <div class="fg">
-          <label class="fl" for="manageHourS">起始时间</label>
-          <select class="fi" id="manageHourS"></select>
+          <label class="fl" for="manageExpectedNames">预设参与者</label>
+          <textarea class="fi manage-list-input" id="manageExpectedNames" placeholder="一行一个昵称，也支持用逗号分隔"></textarea>
         </div>
         <div class="fg">
-          <label class="fl" for="manageHourE">截止时间</label>
-          <select class="fi" id="manageHourE"></select>
+          <div class="manage-participants-head">
+            <label class="fl">当前参与者名单</label>
+            <button class="btn-s manage-add-btn" type="button" onclick="addManageParticipant()">新增参与者</button>
+          </div>
+          <div class="manage-participants-list" id="manageParticipantsList"></div>
+          <div class="tag-hint">这里不会改动他们已填写的时间和备注，只会改名单本身。</div>
         </div>
-      </div>
-      <div class="fg">
-        <label class="fl" for="managePrompt">发起人提示语</label>
-        <textarea class="fi prompt-input" id="managePrompt" maxlength="200"></textarea>
-        <div class="prompt-tools">
-          <div class="tag-hint">修改后会同步给所有参与者。</div>
-          <div class="prompt-count" id="managePromptCount">0/200</div>
-        </div>
-      </div>
-      <div class="fg">
-        <label class="fl" for="manageExpectedNames">预设参与者</label>
-        <textarea class="fi manage-list-input" id="manageExpectedNames" placeholder="一行一个昵称，也支持用逗号分隔"></textarea>
-      </div>
-      <div class="fg">
-        <div class="manage-participants-head">
-          <label class="fl">当前参与者名单</label>
-          <button class="btn-s manage-add-btn" type="button" onclick="addManageParticipant()">新增参与者</button>
-        </div>
-        <div class="manage-participants-list" id="manageParticipantsList"></div>
-        <div class="tag-hint">这里不会改动他们已填写的时间和备注，只会改名单本身。</div>
       </div>
     </div>
-    <button class="btn-p" type="button" onclick="saveManagedSession()">保存修改</button>
-    <button class="btn-s" type="button" onclick="closeManageSession()">关闭</button>
+    <div class="sheet-actions">
+      <button class="btn-p" type="button" onclick="saveManagedSession()">保存修改</button>
+      <button class="btn-s" type="button" onclick="closeManageSession()">关闭</button>
+    </div>
   </div>
 </div>
 
