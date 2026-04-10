@@ -18,6 +18,10 @@ export function fmtRange(session) {
   return `${session.dateS.slice(5).replace('-', '月')}日 — ${session.dateE.slice(5).replace('-', '月')}日`;
 }
 
+export function fmtHour(hour) {
+  return `${pad(hour)}:00`;
+}
+
 export function dayDiff(start, end) {
   return (new Date(end) - new Date(start)) / 86400000;
 }
@@ -64,6 +68,45 @@ export function getState(dayAvail, hour) {
   return value === ST_AVAIL || value === ST_BUSY ? Number(value) : ST_EMPTY;
 }
 
+export function getSlotSummary(participants, currentUserIndex, myDayAvail, date, hour) {
+  const summary = {
+    availableCount: 0,
+    busyCount: 0,
+    unknownCount: 0,
+    requiredAvailableCount: 0,
+    requiredBusyCount: 0,
+    requiredUnknownCount: 0,
+    requiredBusyNames: [],
+    requiredAvailableNames: [],
+  };
+
+  participants.forEach((participant, index) => {
+    const avail = index === currentUserIndex ? myDayAvail : (participant.avail?.[date] || {});
+    const status = getState(avail, hour);
+    const isRequired = Boolean(participant.isRequired);
+    if (status === ST_AVAIL) {
+      summary.availableCount += 1;
+      if (isRequired) {
+        summary.requiredAvailableCount += 1;
+        summary.requiredAvailableNames.push(participant.name);
+      }
+      return;
+    }
+    if (status === ST_BUSY) {
+      summary.busyCount += 1;
+      if (isRequired) {
+        summary.requiredBusyCount += 1;
+        summary.requiredBusyNames.push(participant.name);
+      }
+      return;
+    }
+    summary.unknownCount += 1;
+    if (isRequired) summary.requiredUnknownCount += 1;
+  });
+
+  return summary;
+}
+
 export function getDates(session) {
   const dates = [];
   const current = new Date(`${session.dateS}T00:00:00`);
@@ -81,6 +124,49 @@ export function getHours(session) {
     hours.push(hour);
   }
   return hours;
+}
+
+export function getSlotWindow(session, date) {
+  const baseStart = Number(session?.hourS ?? 9);
+  const baseEnd = Number(session?.hourE ?? 21);
+  const firstHourS = Number(session?.firstHourS ?? baseStart);
+  const lastHourE = Number(session?.lastHourE ?? baseEnd);
+
+  if (session?.dateS === date && session?.dateE === date) {
+    return { start: firstHourS, end: lastHourE };
+  }
+  if (session?.dateS === date) {
+    return { start: firstHourS, end: baseEnd };
+  }
+  if (session?.dateE === date) {
+    return { start: baseStart, end: lastHourE };
+  }
+  return { start: baseStart, end: baseEnd };
+}
+
+export function isSlotEnabled(session, date, hour) {
+  const { start, end } = getSlotWindow(session, date);
+  return hour >= start && hour < end;
+}
+
+export function describeTimeWindow(session) {
+  if (!session) return '';
+  const baseStart = Number(session.hourS ?? 9);
+  const baseEnd = Number(session.hourE ?? 21);
+  const firstHourS = Number(session.firstHourS ?? baseStart);
+  const lastHourE = Number(session.lastHourE ?? baseEnd);
+  const parts = [`每日 ${fmtHour(baseStart)}-${fmtHour(baseEnd)}`];
+
+  if (session.dateS === session.dateE) {
+    if (firstHourS !== baseStart || lastHourE !== baseEnd) {
+      parts.push(`当天实际 ${fmtHour(firstHourS)}-${fmtHour(lastHourE)}`);
+    }
+    return parts.join(' · ');
+  }
+
+  if (firstHourS !== baseStart) parts.push(`首日 ${fmtHour(firstHourS)} 起`);
+  if (lastHourE !== baseEnd) parts.push(`末日到 ${fmtHour(lastHourE)}`);
+  return parts.join(' · ');
 }
 
 export function showScreen(id) {

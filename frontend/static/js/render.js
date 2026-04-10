@@ -1,7 +1,7 @@
 import { CHANGELOG_ITEMS, COLORS, ST_AVAIL, ST_BUSY, WD } from './constants.js';
 import { getLastName, getSavedParticipantName, getSessionAccess, loadHistory } from './history.js';
 import { state } from './state.js';
-import { $, esc, fmtRange, getDates, getHours, getState, lerp, pad } from './helpers.js';
+import { $, describeTimeWindow, esc, fmtRange, getDates, getHours, getSlotSummary, getState, isSlotEnabled, lerp, pad } from './helpers.js';
 
 export function renderHistoryCard() {
   const history = loadHistory();
@@ -60,8 +60,8 @@ export function renderHomeChangelog() {
 }
 
 export function updateCollapseButton() {
-  $('btnCollapse').textContent = state.collapsed ? '展开他人' : '折叠他人';
-  $('btnCollapse').classList.toggle('active', !state.collapsed);
+  $('btnExpandOthers')?.classList.toggle('active', !state.collapsed);
+  $('btnCollapseOthers')?.classList.toggle('active', state.collapsed);
 }
 
 export function renderJoin() {
@@ -96,7 +96,9 @@ export function renderJoin() {
 export function renderMain() {
   $('mTitle').textContent = state.S.name;
   const creatorName = state.S.creatorName ? ` · 创建者 ${esc(state.S.creatorName)}` : '';
-  $('mSub').innerHTML = `<span class="live-dot"></span>${fmtRange(state.S)}${state.ME ? ' · 点击切换状态' : ' · 查看模式'}${creatorName}`;
+  $('mSub').innerHTML = `<span class="live-dot"></span>${fmtRange(state.S)} · ${describeTimeWindow(state.S)}${state.ME ? ' · 点击切换状态' : ' · 查看模式'}${creatorName}`;
+  $('btnTR').classList.toggle('active', state.layout === 'tr');
+  $('btnPR').classList.toggle('active', state.layout === 'pr');
   renderBadges();
   renderCreatorPrompt('main');
 
@@ -137,7 +139,7 @@ export function renderBadges() {
   $('statsStrip').innerHTML = `<span class="s-lbl">参与者（${state.S.participants.length}人）：</span><div class="pbadges">${
     state.S.participants.map(participant => {
       const isMe = participant.id === state.ME;
-      return `<span class="pbadge${isMe ? ' me' : ''}"><span class="pdot" style="background:${participant.color}"></span>${esc(participant.name)}${isMe ? '（我）' : ''}</span>`;
+      return `<span class="pbadge${isMe ? ' me' : ''}${participant.isRequired ? ' required' : ''}"><span class="pdot" style="background:${participant.color}"></span>${esc(participant.name)}${isMe ? '（我）' : ''}${participant.isRequired ? '<span class="pbadge-tag">关键</span>' : ''}</span>`;
     }).join('')
   }</div>`;
 }
@@ -192,15 +194,30 @@ function renderDayByTime(date) {
     const isMe = index === currentUserIndex;
     const isOther = !isMe;
     return `<th class="th-p${isMe ? ' is-me' : ''}${isOther ? ' other-col' : ''}" ${isOther && state.collapsed ? 'style="display:none"' : ''}>
-      <span class="pname">${esc(participant.name)}${isMe ? ' ✏' : ''}</span>
+      <span class="pname">${esc(participant.name)}${participant.isRequired ? '<span class="mini-priority">关键</span>' : ''}${isMe ? ' ✏' : ''}</span>
       <span class="pmark" style="background:${participant.color}"></span>
     </th>`;
   }).join('');
 
   const rows = hours.map(hour => {
+    const slotEnabled = isSlotEnabled(state.S, date, hour);
+    if (!slotEnabled) {
+      const blockedCells = participants.map((participant, index) => {
+        const isMe = index === currentUserIndex;
+        const isOther = !isMe;
+        return `<td class="td-c${isOther ? ' other-col' : ''}" ${isOther && state.collapsed ? 'style="display:none"' : ''}>
+          <div class="ci ci-blocked${isOther && state.ME ? ' dim' : ''}" title="该时段不在填写范围内"></div>
+        </td>`;
+      }).join('');
+      return `<tr data-date="${date}" data-h="${hour}">
+        <td class="td-lbl td-lbl-blocked">${pad(hour)}:00<small>— ${pad(hour + 1)}:00</small></td>
+        ${blockedCells}
+        <td class="td-sum"><div class="si si-blocked" title="该时段不在填写范围内"></div></td>
+      </tr>`;
+    }
+
+    const summary = getSlotSummary(participants, currentUserIndex, myDayAvail, date, hour);
     const states = participants.map((participant, index) => getState(index === currentUserIndex ? myDayAvail : (participant.avail[date] || {}), hour));
-    const availableCount = states.filter(value => value === ST_AVAIL).length;
-    const busyCount = states.filter(value => value === ST_BUSY).length;
 
     const cells = participants.map((participant, index) => {
       const isMe = index === currentUserIndex;
@@ -218,7 +235,7 @@ function renderDayByTime(date) {
     return `<tr data-date="${date}" data-h="${hour}">
       <td class="td-lbl">${pad(hour)}:00<small>— ${pad(hour + 1)}:00</small></td>
       ${cells}
-      <td class="td-sum">${buildSummaryCell(availableCount, busyCount, participants.length)}</td>
+      <td class="td-sum">${buildSummaryCell(summary.availableCount, summary.busyCount, participants.length, summary)}</td>
     </tr>`;
   }).join('');
 
@@ -249,6 +266,11 @@ function renderDayByParticipant(date) {
     const sumStyle = availableCount > 0 ? 'background:#E8F8F0;color:#0F766E' : 'background:#F5F5F5;color:#CBD5E1';
 
     const cells = hours.map(hour => {
+      if (!isSlotEnabled(state.S, date, hour)) {
+        return `<td class="td-h${isOther ? ' other-col' : ''}" ${isOther && state.collapsed ? 'style="display:none"' : ''}>
+          <div class="ci ci-blocked${isOther && state.ME ? ' dim' : ''}" title="该时段不在填写范围内"></div>
+        </td>`;
+      }
       const status = getState(avail, hour);
       const cellClass = `ci${isMe ? ' ed' : ' ro'}${isOther && state.ME ? ' dim' : ''}`;
       const dataAttrs = isMe
@@ -261,21 +283,22 @@ function renderDayByParticipant(date) {
 
     return `<tr data-date="${date}" data-pi="${index}"${isOther ? ` class="other-row${state.collapsed ? ' collapsed' : ''}"` : ''}>
       <td class="td-plbl">
-        <span class="pn${isMe ? ' is-me' : ''}">${esc(participant.name)}${isMe ? ' ✏' : ''}</span>
+        <span class="pn${isMe ? ' is-me' : ''}">${esc(participant.name)}${participant.isRequired ? '<span class="mini-priority">关键</span>' : ''}${isMe ? ' ✏' : ''}</span>
         <span class="pm" style="background:${participant.color}"></span>
       </td>
       ${cells}
       <td class="td-psum${isOther ? ' other-col' : ''}" ${isOther && state.collapsed ? 'style="display:none"' : ''}>
-        <div class="si" style="${sumStyle}">${availableCount > 0 ? availableCount : ''}</div>
+        <div class="si${participant.isRequired ? ' si-person-required' : ''}" style="${sumStyle}">${availableCount > 0 ? availableCount : ''}${participant.isRequired ? '<span class="si-person-tag">关键</span>' : ''}</div>
       </td>
     </tr>`;
   }).join('');
 
   const summaryRow = hours.map(hour => {
-    const states = participants.map((participant, index) => getState(index === currentUserIndex ? myDayAvail : (participant.avail[date] || {}), hour));
-    const availableCount = states.filter(value => value === ST_AVAIL).length;
-    const busyCount = states.filter(value => value === ST_BUSY).length;
-    return `<td class="td-h">${buildSummaryCell(availableCount, busyCount, participants.length)}</td>`;
+    if (!isSlotEnabled(state.S, date, hour)) {
+      return '<td class="td-h"><div class="si si-blocked" title="该时段不在填写范围内"></div></td>';
+    }
+    const summary = getSlotSummary(participants, currentUserIndex, myDayAvail, date, hour);
+    return `<td class="td-h">${buildSummaryCell(summary.availableCount, summary.busyCount, participants.length, summary)}</td>`;
   }).join('');
 
   const otherCount = participants.filter((_, index) => index !== currentUserIndex).length;
@@ -303,14 +326,31 @@ export function cellStyle(status, color) {
   return 'background:#EFF0F2;color:transparent;';
 }
 
-export function buildSummaryCell(availableCount, busyCount, participantCount) {
-  if (participantCount === 0 || (availableCount === 0 && busyCount === 0)) return '<div class="si"></div>';
+function getSummaryIndicator(summary) {
+  if (!summary || (summary.requiredAvailableCount === 0 && summary.requiredBusyCount === 0 && summary.requiredUnknownCount === 0)) {
+    return '';
+  }
+  if (summary.requiredBusyCount > 0) {
+    return `<span class="si-meta conflict" title="关键成员冲突：${esc(summary.requiredBusyNames.join('、'))}">关键冲突</span>`;
+  }
+  if (summary.requiredAvailableCount > 0) {
+    return `<span class="si-meta pass" title="关键成员有空：${esc(summary.requiredAvailableNames.join('、'))}">关键优先</span>`;
+  }
+  return `<span class="si-meta pending" title="关键成员尚未填写，不直接否决">关键待定</span>`;
+}
+
+export function buildSummaryCell(availableCount, busyCount, participantCount, summary = null) {
+  if (participantCount === 0) return '<div class="si"></div>';
+  if (availableCount === 0 && busyCount === 0) {
+    return `<div class="si">${getSummaryIndicator(summary)}</div>`;
+  }
   const ratio = availableCount / participantCount;
   const background = availableCount > 0 ? lerp('#C2EFD4', '#07C160', ratio) : '#F5F5F5';
   const color = ratio > 0.55 ? '#fff' : (availableCount > 0 ? '#065C30' : '#CCC');
   const text = availableCount > 0 ? `${availableCount}/${participantCount}` : '';
   const dot = busyCount > 0 ? `<span class="si-busy" title="${busyCount}人没空"></span>` : '';
-  return `<div class="si" style="background:${background};color:${color}">${text}${dot}</div>`;
+  const summaryClass = summary?.requiredBusyCount ? ' si-conflict' : (summary?.requiredAvailableCount ? ' si-priority' : '');
+  return `<div class="si${summaryClass}" style="background:${background};color:${color}">${text}${dot}${getSummaryIndicator(summary)}</div>`;
 }
 
 export function getNextColor() {

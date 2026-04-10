@@ -15,7 +15,8 @@ import {
   saveSessionFlags,
   saveToHistory,
 } from './history.js';
-import { $, clone, dayDiff, dfmt, esc, getDates, getHours, getState, normalizeAvail, showScreen, toast } from './helpers.js';
+import { $, clone, dayDiff, dfmt, esc, getDates, getHours, getSlotSummary, getState, isSlotEnabled, normalizeAvail, showScreen, toast } from './helpers.js';
+import { getUserPreferences, saveUserPreferences } from './preferences.js';
 import { buildSummaryCell, cellStyle, getNextColor, renderGrid, renderHistoryCard, renderHistoryScreen, renderJoin, renderMain, updateCollapseButton, updateRemarkCounter, updateRemarkHint } from './render.js';
 import { renderAISummary } from './summary.js';
 import { state } from './state.js';
@@ -27,6 +28,117 @@ function getApiMessage(error, fallback) {
 
 function sessionHeaders(sessionId = state.SID) {
   return getSessionAuthHeaders(sessionId);
+}
+
+function applyUserViewDefaults() {
+  state.layout = state.userPrefs.layout;
+  state.collapsed = state.userPrefs.collapsed;
+}
+
+function syncSettingsDraftButtons() {
+  $('prefLayoutTR')?.classList.toggle('active', state.settingsDraft.layout === 'tr');
+  $('prefLayoutPR')?.classList.toggle('active', state.settingsDraft.layout === 'pr');
+  $('prefCollapseOff')?.classList.toggle('active', !state.settingsDraft.collapsed);
+  $('prefCollapseOn')?.classList.toggle('active', state.settingsDraft.collapsed);
+}
+
+function openUserSettings() {
+  state.settingsDraft = { ...state.userPrefs };
+  syncSettingsDraftButtons();
+  $('settingsOverlay')?.classList.add('open');
+}
+
+function closeUserSettings() {
+  $('settingsOverlay')?.classList.remove('open');
+}
+
+function overlayBgSettings(event) {
+  if (event.target === $('settingsOverlay')) closeUserSettings();
+}
+
+function setSettingsLayout(mode) {
+  state.settingsDraft.layout = mode === 'tr' ? 'tr' : 'pr';
+  syncSettingsDraftButtons();
+}
+
+function setSettingsCollapse(collapsed) {
+  state.settingsDraft.collapsed = Boolean(collapsed);
+  syncSettingsDraftButtons();
+}
+
+function saveUserViewPreferences() {
+  state.userPrefs = saveUserPreferences(state.settingsDraft);
+  applyUserViewDefaults();
+  if (!document.getElementById('mainScreen')?.classList.contains('hidden')) {
+    renderMainScreen();
+  }
+  closeUserSettings();
+  toast('用户设置已保存');
+}
+
+function fillHourOptions(select, fromHour, toHour) {
+  if (!select) return;
+  const currentValue = select.value;
+  select.innerHTML = '';
+  for (let hour = fromHour; hour <= toHour; hour += 1) {
+    const option = document.createElement('option');
+    option.value = hour;
+    option.textContent = `${String(hour).padStart(2, '0')}:00`;
+    select.appendChild(option);
+  }
+  if ([...select.options].some(option => option.value === currentValue)) {
+    select.value = currentValue;
+  }
+}
+
+function syncBoundaryTimeControls(prefix, changedField = '') {
+  const startSelect = $(`${prefix}HourS`);
+  const endSelect = $(`${prefix}HourE`);
+  const firstSelect = $(`${prefix}FirstHourS`);
+  const lastSelect = $(`${prefix}LastHourE`);
+  const dateStart = $(`${prefix}DateS`)?.value || '';
+  const dateEnd = $(`${prefix}DateE`)?.value || '';
+  if (!startSelect || !endSelect || !firstSelect || !lastSelect) return;
+
+  const baseStart = Number(startSelect.value || 9);
+  const nextEnd = Math.max(Number(endSelect.value || 21), baseStart + 1);
+  if (Number(endSelect.value || 0) !== nextEnd) endSelect.value = String(nextEnd);
+
+  fillHourOptions(firstSelect, baseStart, nextEnd - 1);
+  fillHourOptions(lastSelect, baseStart + 1, nextEnd);
+
+  let firstValue = Number(firstSelect.value || baseStart);
+  let lastValue = Number(lastSelect.value || nextEnd);
+  firstValue = Math.min(Math.max(firstValue, baseStart), nextEnd - 1);
+  lastValue = Math.max(Math.min(lastValue, nextEnd), baseStart + 1);
+
+  if (dateStart && dateStart === dateEnd && firstValue >= lastValue) {
+    if (changedField === 'first') {
+      lastValue = Math.min(nextEnd, firstValue + 1);
+    } else {
+      firstValue = Math.max(baseStart, lastValue - 1);
+    }
+  }
+
+  firstSelect.value = String(firstValue);
+  lastSelect.value = String(lastValue);
+}
+
+function readTimeControls(prefix) {
+  return {
+    hourS: Number($(`${prefix}HourS`).value),
+    hourE: Number($(`${prefix}HourE`).value),
+    firstHourS: Number($(`${prefix}FirstHourS`).value),
+    lastHourE: Number($(`${prefix}LastHourE`).value),
+  };
+}
+
+function validateTimeWindow(dateS, dateE, hourS, hourE, firstHourS, lastHourE) {
+  if (hourS >= hourE) return '截止时间须晚于起始时间';
+  if (firstHourS < hourS || firstHourS >= hourE) return '首日开始时间不正确';
+  if (lastHourE <= hourS || lastHourE > hourE) return '末日结束时间不正确';
+  if (dateS && dateE && dateS === dateE && firstHourS >= lastHourE) return '同一天的首尾截断时间不正确';
+  return '';
 }
 
 function getCurrentParticipant() {
@@ -77,6 +189,7 @@ function restoreParticipant(autoEnter = false) {
   if (!savedParticipant) return false;
   hydrateCurrentUser(savedParticipant.id, savedParticipant.name);
   if (autoEnter) {
+    applyUserViewDefaults();
     renderMainScreen();
     showScreen('mainScreen');
     startPoll();
@@ -140,26 +253,44 @@ function goToHistory() {
 function initForm() {
   const startSelect = $('sHourS');
   const endSelect = $('sHourE');
+  const firstSelect = $('sFirstHourS');
+  const lastSelect = $('sLastHourE');
   const manageStartSelect = $('manageHourS');
   const manageEndSelect = $('manageHourE');
-  for (let hour = 0; hour <= 23; hour += 1) {
-    [startSelect, endSelect, manageStartSelect, manageEndSelect].forEach(select => {
-      if (!select) return;
-      const option = document.createElement('option');
-      option.value = hour;
-      option.textContent = `${String(hour).padStart(2, '0')}:00`;
-      select.appendChild(option);
-    });
-  }
+  const manageFirstSelect = $('manageFirstHourS');
+  const manageLastSelect = $('manageLastHourE');
+
+  fillHourOptions(startSelect, 0, 23);
+  fillHourOptions(manageStartSelect, 0, 23);
+  fillHourOptions(endSelect, 1, 24);
+  fillHourOptions(manageEndSelect, 1, 24);
 
   startSelect.value = 9;
   endSelect.value = 21;
+  if (firstSelect) firstSelect.value = 9;
+  if (lastSelect) lastSelect.value = 21;
+  if (manageStartSelect) manageStartSelect.value = 9;
+  if (manageEndSelect) manageEndSelect.value = 21;
+  if (manageFirstSelect) manageFirstSelect.value = 9;
+  if (manageLastSelect) manageLastSelect.value = 21;
   const now = new Date();
   const later = new Date(now);
   later.setDate(now.getDate() + 3);
   $('sDateS').value = dfmt(now);
   $('sDateE').value = dfmt(later);
   $('sMyName').value = getLastName();
+
+  syncBoundaryTimeControls('s');
+  syncBoundaryTimeControls('manage');
+
+  ['HourS', 'HourE', 'DateS', 'DateE'].forEach(field => {
+    $(`s${field}`)?.addEventListener('change', () => syncBoundaryTimeControls('s'));
+    $(`manage${field}`)?.addEventListener('change', () => syncBoundaryTimeControls('manage'));
+  });
+  $('sFirstHourS')?.addEventListener('change', () => syncBoundaryTimeControls('s', 'first'));
+  $('sLastHourE')?.addEventListener('change', () => syncBoundaryTimeControls('s', 'last'));
+  $('manageFirstHourS')?.addEventListener('change', () => syncBoundaryTimeControls('manage', 'first'));
+  $('manageLastHourE')?.addEventListener('change', () => syncBoundaryTimeControls('manage', 'last'));
 
   const tagInput = $('tagInp');
   tagInput.addEventListener('keydown', event => {
@@ -182,8 +313,7 @@ async function createSession() {
   const name = $('sName').value.trim();
   const dateS = $('sDateS').value;
   const dateE = $('sDateE').value;
-  const hourS = Number($('sHourS').value);
-  const hourE = Number($('sHourE').value);
+  const { hourS, hourE, firstHourS, lastHourE } = readTimeControls('s');
   const myName = $('sMyName').value.trim();
   const creatorPrompt = ($('sPrompt')?.value || '').trim().slice(0, 200);
   const createBtn = $('createBtn');
@@ -191,7 +321,8 @@ async function createSession() {
   if (!name) return toast('请输入活动名称');
   if (!dateS || !dateE) return toast('请选择日期');
   if (dateS > dateE) return toast('开始日期不能晚于结束日期');
-  if (hourS >= hourE) return toast('截止时间须晚于起始时间');
+  const timeError = validateTimeWindow(dateS, dateE, hourS, hourE, firstHourS, lastHourE);
+  if (timeError) return toast(timeError);
   if (!myName) return toast('请输入你的昵称（发起人）');
   if (dayDiff(dateS, dateE) > 14) return toast('日期范围最多14天');
 
@@ -207,6 +338,8 @@ async function createSession() {
         dateE,
         hourS,
         hourE,
+        firstHourS,
+        lastHourE,
         creatorName: myName,
         creatorPrompt,
         expectedNames: state.tags.filter(tag => tag !== myName),
@@ -307,6 +440,7 @@ async function joinSession() {
     });
     applySession(updated.session);
     hydrateCurrentUser(updated.participantId, updated.participantName || name);
+    applyUserViewDefaults();
     renderMainScreen();
     showScreen('mainScreen');
     startPoll();
@@ -329,6 +463,7 @@ function viewOnly() {
   state.myAvail = {};
   state.myRemark = '';
   saveToHistory(state.SID, state.S.name, state.S.dateS, state.S.dateE);
+  applyUserViewDefaults();
   renderMainScreen();
   showScreen('mainScreen');
   startPoll();
@@ -352,8 +487,8 @@ function setLayout(mode) {
   attachEvents();
 }
 
-function toggleCollapse() {
-  state.collapsed = !state.collapsed;
+function setCollapseState(collapsed) {
+  state.collapsed = Boolean(collapsed);
   updateCollapseButton();
   document.querySelectorAll('tr.other-row').forEach(row => row.classList.toggle('collapsed', state.collapsed));
   document.querySelectorAll('.other-col').forEach(node => {
@@ -362,6 +497,18 @@ function toggleCollapse() {
   document.querySelectorAll('.toggle-btn-row td').forEach(cell => {
     cell.textContent = state.collapsed ? '展开其他人' : '收起其他人';
   });
+}
+
+function collapseOthers() {
+  setCollapseState(true);
+}
+
+function expandOthers() {
+  setCollapseState(false);
+}
+
+function toggleCollapse() {
+  setCollapseState(!state.collapsed);
 }
 
 function onRemarkInput(event) {
@@ -469,11 +616,10 @@ function refreshSummary() {
   getDates(state.S).forEach(date => {
     const myDayAvail = state.ME ? (state.myAvail[date] || {}) : {};
     getHours(state.S).forEach(hour => {
-      const states = participants.map((participant, index) => getState(index === currentUserIndex ? myDayAvail : (participant.avail[date] || {}), hour));
-      const availableCount = states.filter(value => value === ST_AVAIL).length;
-      const busyCount = states.filter(value => value === ST_BUSY).length;
+      if (!isSlotEnabled(state.S, date, hour)) return;
+      const summary = getSlotSummary(participants, currentUserIndex, myDayAvail, date, hour);
       const row = document.querySelector(`table.sg.m-tr[data-date="${date}"] tr[data-h="${hour}"] .si`);
-      if (row) row.outerHTML = buildSummaryCell(availableCount, busyCount, maxParticipants);
+      if (row) row.outerHTML = buildSummaryCell(summary.availableCount, summary.busyCount, maxParticipants, summary);
     });
 
     if (state.layout === 'pr') {
@@ -481,10 +627,9 @@ function refreshSummary() {
       if (summaryRow) {
         const cells = summaryRow.querySelectorAll('td.td-h');
         getHours(state.S).forEach((hour, index) => {
-          const states = participants.map((participant, participantIndex) => getState(participantIndex === currentUserIndex ? (state.myAvail[date] || {}) : (participant.avail[date] || {}), hour));
-          const availableCount = states.filter(value => value === ST_AVAIL).length;
-          const busyCount = states.filter(value => value === ST_BUSY).length;
-          if (cells[index]) cells[index].innerHTML = buildSummaryCell(availableCount, busyCount, maxParticipants);
+          if (!isSlotEnabled(state.S, date, hour)) return;
+          const summary = getSlotSummary(participants, currentUserIndex, state.myAvail[date] || {}, date, hour);
+          if (cells[index]) cells[index].innerHTML = buildSummaryCell(summary.availableCount, summary.busyCount, maxParticipants, summary);
         });
       }
 
@@ -492,10 +637,10 @@ function refreshSummary() {
         const cell = document.querySelector(`table.sg.m-pr[data-date="${date}"] tr[data-pi="${index}"] .td-psum .si`);
         if (!cell) return;
         const avail = index === currentUserIndex ? (state.myAvail[date] || {}) : (participant.avail[date] || {});
-        const availableCount = getHours(state.S).filter(hour => getState(avail, hour) === ST_AVAIL).length;
+        const availableCount = getHours(state.S).filter(hour => isSlotEnabled(state.S, date, hour) && getState(avail, hour) === ST_AVAIL).length;
         const style = availableCount > 0 ? 'background:#E8F8F0;color:#0F766E' : 'background:#F5F5F5;color:#CBD5E1';
         cell.setAttribute('style', style);
-        cell.textContent = availableCount > 0 ? availableCount : '';
+        cell.innerHTML = `${availableCount > 0 ? availableCount : ''}${participant.isRequired ? '<span class="si-person-tag">关键</span>' : ''}`;
       });
     }
   });
@@ -652,6 +797,10 @@ function renderManageParticipants() {
       <span class="manage-participant-dot" style="background:${participant.color}"></span>
       <input class="fi manage-participant-input" type="text" maxlength="10" value="${esc(participant.name)}"
         oninput="updateManageParticipantName('${participant.id}', this.value)">
+      <label class="manage-required-toggle">
+        <input type="checkbox" ${participant.isRequired ? 'checked' : ''} onchange="updateManageParticipantRequired('${participant.id}', this.checked)">
+        <span>关键成员</span>
+      </label>
       <button class="btn-s manage-row-remove" type="button" onclick="removeManageParticipant('${participant.id}')">移除</button>
     </div>
   `).join('');
@@ -669,6 +818,7 @@ function addManageParticipant() {
     id: `tmp_${Date.now()}_${state.manageParticipants.length}`,
     name: '',
     color: COLORS[state.manageParticipants.length % COLORS.length],
+    isRequired: false,
   };
   state.manageParticipants.push(next);
   renderManageParticipants();
@@ -677,6 +827,12 @@ function addManageParticipant() {
 function updateManageParticipantName(id, name) {
   state.manageParticipants = state.manageParticipants.map(participant => (
     participant.id === id ? { ...participant, name: String(name || '').slice(0, 10) } : participant
+  ));
+}
+
+function updateManageParticipantRequired(id, isRequired) {
+  state.manageParticipants = state.manageParticipants.map(participant => (
+    participant.id === id ? { ...participant, isRequired: Boolean(isRequired) } : participant
   ));
 }
 
@@ -692,12 +848,17 @@ function openManageSession() {
   $('manageDateE').value = state.S.dateE || '';
   $('manageHourS').value = state.S.hourS;
   $('manageHourE').value = state.S.hourE;
+  syncBoundaryTimeControls('manage');
+  $('manageFirstHourS').value = String(state.S.firstHourS ?? state.S.hourS);
+  $('manageLastHourE').value = String(state.S.lastHourE ?? state.S.hourE);
+  syncBoundaryTimeControls('manage');
   $('managePrompt').value = state.S.creatorPrompt || '';
   $('manageExpectedNames').value = (state.S.expectedNames || []).join('\n');
   state.manageParticipants = state.S.participants.map(participant => ({
     id: participant.id,
     name: participant.name,
     color: participant.color,
+    isRequired: Boolean(participant.isRequired),
   }));
   updateManagePromptCount();
   renderManageParticipants();
@@ -721,18 +882,27 @@ function parseNameList(value) {
 
 async function saveManagedSession() {
   try {
+    const dateS = $('manageDateS').value;
+    const dateE = $('manageDateE').value;
+    const { hourS, hourE, firstHourS, lastHourE } = readTimeControls('manage');
+    const timeError = validateTimeWindow(dateS, dateE, hourS, hourE, firstHourS, lastHourE);
+    if (timeError) return toast(timeError);
+
     const payload = {
       name: $('manageName').value.trim(),
-      dateS: $('manageDateS').value,
-      dateE: $('manageDateE').value,
-      hourS: Number($('manageHourS').value),
-      hourE: Number($('manageHourE').value),
+      dateS,
+      dateE,
+      hourS,
+      hourE,
+      firstHourS,
+      lastHourE,
       creatorPrompt: ($('managePrompt').value || '').trim().slice(0, 200),
       expectedNames: parseNameList($('manageExpectedNames').value),
       participants: state.manageParticipants.map(participant => ({
         id: participant.id.startsWith('tmp_') ? '' : participant.id,
         name: participant.name.trim(),
         color: participant.color,
+        isRequired: Boolean(participant.isRequired),
       })),
     };
     const updated = await requestJson(`/api/session/${state.SID}`, {
@@ -835,6 +1005,10 @@ async function init() {
   const params = new URLSearchParams(location.search);
   state.SID = params.get('s');
   state.AUTO_JOIN = params.get('auto_join') === '1';
+  state.userPrefs = getUserPreferences();
+  state.settingsDraft = { ...state.userPrefs };
+  applyUserViewDefaults();
+  initForm();
 
   if (state.SID) {
     try {
@@ -849,13 +1023,13 @@ async function init() {
     return;
   }
 
-  initForm();
   showHome();
 }
 
 Object.assign(window, {
   addTag,
   closeAISummary,
+  closeUserSettings,
   closeShare,
   copyUrl,
   createSession,
@@ -871,20 +1045,28 @@ Object.assign(window, {
   openManageSession,
   openAISummary,
   openShare,
+  openUserSettings,
   overlayBg,
   overlayBgAI,
   overlayBgManage,
+  overlayBgSettings,
   pickChip,
+  expandOthers,
+  collapseOthers,
   removeManageParticipant,
   removeTag,
   resumeSession,
   saveManagedSession,
+  saveUserViewPreferences,
   setLayout,
+  setSettingsCollapse,
+  setSettingsLayout,
   showTutorial,
   skipTutorial,
   switchUser,
   toggleCollapse,
   updateManageParticipantName,
+  updateManageParticipantRequired,
   viewOnly,
   addManageParticipant,
   closeManageSession,

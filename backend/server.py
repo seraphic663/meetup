@@ -38,7 +38,7 @@ MAX_PARTICIPANTS = 24
 MAX_RANGE_DAYS = 14
 VALID_STATES = {0, 1, 2}
 COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 4
 
 logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO))
 logger = logging.getLogger("meetup")
@@ -162,6 +162,21 @@ def _parse_date(value):
         return None
 
 
+def _parse_int(value, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _parse_bool(value, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _safe_color(value: str | None, fallback: str = "#FF6B35") -> str:
     text = str(value or "").strip()
     return text if COLOR_RE.fullmatch(text) else fallback
@@ -228,6 +243,7 @@ def _normalize_participants(session_data: dict, raw_participants, existing_by_id
             "color": _safe_color(raw.get("color"), fallback_color),
             "avail": _normalize_avail(session_data, raw.get("avail") if "avail" in raw else (existing or {}).get("avail", {})),
             "remark": _clean_text(raw.get("remark") if "remark" in raw else (existing or {}).get("remark"), REMARK_MAX),
+            "isRequired": _parse_bool(raw.get("isRequired") if "isRequired" in raw else (existing or {}).get("isRequired"), False),
         }
 
         token_hash = _clean_text(raw.get("tokenHash") if "tokenHash" in raw else (existing or {}).get("tokenHash"), 128)
@@ -245,14 +261,26 @@ def _normalize_session_data(raw_data: dict | None):
     if not isinstance(raw_data, dict):
         return None
 
+    date_s = _parse_date(raw_data.get("dateS"))
+    date_e = _parse_date(raw_data.get("dateE"))
+    hour_s, hour_e, first_hour_s, last_hour_e = _normalize_time_window(
+        date_s,
+        date_e,
+        raw_data.get("hourS", 9),
+        raw_data.get("hourE", 21),
+        raw_data.get("firstHourS", raw_data.get("hourS", 9)),
+        raw_data.get("lastHourE", raw_data.get("hourE", 21)),
+    )
     payload = {
         "id": _sanitize_sid(raw_data.get("id")),
         "schemaVersion": int(raw_data.get("schemaVersion") or 1),
         "name": _clean_text(raw_data.get("name"), SESSION_NAME_MAX),
-        "dateS": _parse_date(raw_data.get("dateS")).isoformat() if _parse_date(raw_data.get("dateS")) else "",
-        "dateE": _parse_date(raw_data.get("dateE")).isoformat() if _parse_date(raw_data.get("dateE")) else "",
-        "hourS": int(raw_data.get("hourS", 9)) if str(raw_data.get("hourS", 9)).isdigit() else 9,
-        "hourE": int(raw_data.get("hourE", 21)) if str(raw_data.get("hourE", 21)).isdigit() else 21,
+        "dateS": date_s.isoformat() if date_s else "",
+        "dateE": date_e.isoformat() if date_e else "",
+        "hourS": hour_s,
+        "hourE": hour_e,
+        "firstHourS": first_hour_s,
+        "lastHourE": last_hour_e,
         "creatorPrompt": _clean_text(raw_data.get("creatorPrompt"), PROMPT_MAX),
     }
 
@@ -278,11 +306,10 @@ def _validate_create_payload(body: dict, creator_name: str | None = None):
     creator_prompt = _clean_text(body.get("creatorPrompt"), PROMPT_MAX)
     date_s = _parse_date(body.get("dateS"))
     date_e = _parse_date(body.get("dateE"))
-    try:
-        hour_s = int(body.get("hourS", 9))
-        hour_e = int(body.get("hourE", 21))
-    except (TypeError, ValueError):
-        hour_s = hour_e = -1
+    hour_s = _parse_int(body.get("hourS", 9), -1)
+    hour_e = _parse_int(body.get("hourE", 21), -1)
+    first_hour_s = _parse_int(body.get("firstHourS", hour_s), -1)
+    last_hour_e = _parse_int(body.get("lastHourE", hour_e), -1)
 
     errors = []
     if not name:
@@ -295,6 +322,21 @@ def _validate_create_payload(body: dict, creator_name: str | None = None):
         errors.append("日期范围最多14天")
     if hour_s < 0 or hour_s > 23 or hour_e < 1 or hour_e > 24 or hour_s >= hour_e:
         errors.append("时间范围不正确")
+    if first_hour_s < hour_s or first_hour_s >= hour_e:
+        errors.append("首日开始时间不正确")
+    if last_hour_e <= hour_s or last_hour_e > hour_e:
+        errors.append("末日结束时间不正确")
+    if date_s and date_e and date_s == date_e and first_hour_s >= last_hour_e:
+        errors.append("同一天的首尾截断时间不正确")
+
+    hour_s, hour_e, first_hour_s, last_hour_e = _normalize_time_window(
+        date_s,
+        date_e,
+        hour_s,
+        hour_e,
+        first_hour_s,
+        last_hour_e,
+    )
 
     payload = {
         "name": name,
@@ -302,6 +344,8 @@ def _validate_create_payload(body: dict, creator_name: str | None = None):
         "dateE": date_e.isoformat() if date_e else "",
         "hourS": hour_s,
         "hourE": hour_e,
+        "firstHourS": first_hour_s,
+        "lastHourE": last_hour_e,
         "creatorPrompt": creator_prompt,
         "expectedNames": _dedupe_names(body.get("expectedNames", []), exclude=creator_name),
         "participants": [],
@@ -309,12 +353,46 @@ def _validate_create_payload(body: dict, creator_name: str | None = None):
     return payload, errors
 
 
+def _normalize_time_window(date_s, date_e, hour_s, hour_e, first_hour_s, last_hour_e):
+    hour_s = _parse_int(hour_s, 9)
+    hour_e = _parse_int(hour_e, 21)
+    if hour_s < 0 or hour_s > 23 or hour_e < 1 or hour_e > 24 or hour_s >= hour_e:
+        hour_s, hour_e = 9, 21
+
+    first_hour_s = _parse_int(first_hour_s, hour_s)
+    last_hour_e = _parse_int(last_hour_e, hour_e)
+    first_hour_s = min(max(first_hour_s, hour_s), hour_e - 1)
+    last_hour_e = max(min(last_hour_e, hour_e), hour_s + 1)
+
+    if date_s and date_e and date_s == date_e and first_hour_s >= last_hour_e:
+        first_hour_s, last_hour_e = hour_s, hour_e
+
+    return hour_s, hour_e, first_hour_s, last_hour_e
+
+
+def _slot_enabled(session_data: dict, session_date: str, hour: int) -> bool:
+    hour = _parse_int(hour, -1)
+    hour_s = _parse_int(session_data.get("hourS", 9), 9)
+    hour_e = _parse_int(session_data.get("hourE", 21), 21)
+    first_hour_s = _parse_int(session_data.get("firstHourS", hour_s), hour_s)
+    last_hour_e = _parse_int(session_data.get("lastHourE", hour_e), hour_e)
+    start_date = session_data.get("dateS")
+    end_date = session_data.get("dateE")
+
+    if start_date == end_date == session_date:
+        return first_hour_s <= hour < last_hour_e
+    if session_date == start_date:
+        return first_hour_s <= hour < hour_e
+    if session_date == end_date:
+        return hour_s <= hour < last_hour_e
+    return hour_s <= hour < hour_e
+
+
 def _normalize_avail(session_data: dict, raw_avail):
     if not isinstance(raw_avail, dict):
         return {}
 
     valid_dates = set(_iter_dates(session_data))
-    valid_hours = {str(hour) for hour in range(int(session_data.get("hourS", 9)), int(session_data.get("hourE", 21)))}
     normalized = {}
 
     for raw_date, raw_hours in raw_avail.items():
@@ -323,14 +401,14 @@ def _normalize_avail(session_data: dict, raw_avail):
             continue
         day_payload = {}
         for raw_hour, raw_state in raw_hours.items():
-            hour = str(raw_hour)
+            hour = _parse_int(raw_hour, -1)
             try:
                 state = int(raw_state)
             except (TypeError, ValueError):
                 continue
-            if hour not in valid_hours or state not in VALID_STATES or state == 0:
+            if not _slot_enabled(session_data, session_date, hour) or state not in VALID_STATES or state == 0:
                 continue
-            day_payload[hour] = state
+            day_payload[str(hour)] = state
         if day_payload:
             normalized[session_date] = day_payload
     return normalized
@@ -369,6 +447,8 @@ def _public_session(session_data: dict):
         "dateE": session_data.get("dateE", ""),
         "hourS": session_data.get("hourS", 9),
         "hourE": session_data.get("hourE", 21),
+        "firstHourS": session_data.get("firstHourS", session_data.get("hourS", 9)),
+        "lastHourE": session_data.get("lastHourE", session_data.get("hourE", 21)),
         "creatorPrompt": session_data.get("creatorPrompt", ""),
         "creatorName": creator.get("name", ""),
         "expectedNames": session_data.get("expectedNames", []),
@@ -379,6 +459,7 @@ def _public_session(session_data: dict):
                 "color": participant.get("color"),
                 "avail": participant.get("avail", {}),
                 "remark": participant.get("remark", ""),
+                "isRequired": bool(participant.get("isRequired")),
             }
             for participant in session_data.get("participants", [])
         ],
@@ -423,11 +504,18 @@ def _participant_has_input(participant: dict) -> bool:
     return bool(participant.get("avail") or (participant.get("remark") or "").strip())
 
 
+def _required_participants(participants):
+    return [participant for participant in participants if participant.get("isRequired")]
+
+
 def _slot_stats(session_data: dict):
     participants = session_data.get("participants", [])
+    required_names = {participant.get("name", "未知") for participant in _required_participants(participants)}
     stats = []
     for session_date in _iter_dates(session_data):
         for hour in range(int(session_data.get("hourS", 9)), int(session_data.get("hourE", 21))):
+            if not _slot_enabled(session_data, session_date, hour):
+                continue
             available = []
             busy = []
             unknown = []
@@ -450,6 +538,9 @@ def _slot_stats(session_data: dict):
                     "avail_count": len(available),
                     "busy_count": len(busy),
                     "unknown_count": len(unknown),
+                    "required_available": [name for name in available if name in required_names],
+                    "required_busy": [name for name in busy if name in required_names],
+                    "required_unknown": [name for name in unknown if name in required_names],
                 }
             )
     return stats
@@ -459,14 +550,27 @@ def _slot_label(slot: dict) -> str:
     return f"{slot['date'][5:]} {slot['hour']:02d}:00-{slot['hour'] + 1:02d}:00"
 
 
+def _slot_rank_key(slot: dict):
+    required_conflict = 1 if slot["required_busy"] else 0
+    return (
+        required_conflict,
+        -len(slot["required_available"]),
+        -slot["avail_count"],
+        len(slot["required_unknown"]),
+        slot["busy_count"],
+        slot["unknown_count"],
+        slot["date"],
+        slot["hour"],
+    )
+
+
 def _build_local_summary(session_data: dict) -> str:
     participants = session_data.get("participants", [])
     participant_total = len(participants)
+    required_people = _required_participants(participants)
+    required_total = len(required_people)
     slots = _slot_stats(session_data)
-    ranked_slots = sorted(
-        slots,
-        key=lambda item: (-item["avail_count"], item["busy_count"], item["unknown_count"], item["date"], item["hour"]),
-    )
+    ranked_slots = sorted(slots, key=_slot_rank_key)
     top_slots = [slot for slot in ranked_slots if slot["avail_count"] > 0][:3]
     pending_names = [participant.get("name", "未知") for participant in participants if not _participant_has_input(participant)]
     remarks = [(participant.get("name", "未知"), _clean_text(participant.get("remark"), REMARK_MAX)) for participant in participants if (participant.get("remark") or "").strip()]
@@ -475,6 +579,13 @@ def _build_local_summary(session_data: dict) -> str:
     if top_slots:
         for slot in top_slots:
             parts = [f"{slot['avail_count']}/{participant_total} 人有空"]
+            if required_total:
+                if slot["required_busy"]:
+                    parts.append(f"关键成员冲突：{', '.join(slot['required_busy'])}")
+                elif slot["required_available"]:
+                    parts.append(f"关键成员 {len(slot['required_available'])}/{required_total} 人有空")
+                elif slot["required_unknown"]:
+                    parts.append(f"关键成员待确认 {len(slot['required_unknown'])} 人")
             if slot["busy_count"]:
                 parts.append(f"{slot['busy_count']} 人明确没空")
             if slot["unknown_count"]:
@@ -487,13 +598,30 @@ def _build_local_summary(session_data: dict) -> str:
     lines.append("## 协调建议")
     if top_slots:
         best = top_slots[0]
-        lines.append(f"- 优先从 {_slot_label(best)} 开始沟通，这个时段当前重合度最高。")
+        if required_total and not best["required_busy"]:
+            lines.append(f"- 优先从 {_slot_label(best)} 开始沟通，这个时段没有关键成员明确冲突。")
+        else:
+            lines.append(f"- 优先从 {_slot_label(best)} 开始沟通，这个时段当前重合度最高。")
+        if required_total and best["required_available"]:
+            lines.append(f"- 关键成员里当前有空的是 {', '.join(best['required_available'])}。")
+        if required_total and best["required_busy"]:
+            lines.append(f"- 但这个时段与关键成员 {', '.join(best['required_busy'])} 冲突，除非接受缺席，否则不建议优先敲定。")
         if best["busy"]:
             lines.append(f"- 这个时段和 {', '.join(best['busy'])} 有冲突，如需全员参与可继续看备选时段。")
         if pending_names:
             lines.append(f"- 还有 {', '.join(pending_names)} 未完成填写，最终敲定前建议先补齐信息。")
     else:
         lines.append("- 大家还没有形成明显重合，建议缩小日期范围或先明确优先级。")
+
+    if required_total:
+        lines.append("")
+        lines.append("## 关键成员约束")
+        lines.append(f"- 当前共标记 {required_total} 位关键成员：{', '.join(participant.get('name', '未知') for participant in required_people)}。")
+        clean_slots = [slot for slot in ranked_slots if not slot["required_busy"] and slot["avail_count"] > 0]
+        if clean_slots:
+            lines.append(f"- 首选优先看没有关键成员明确没空的时段，例如 {_slot_label(clean_slots[0])}。")
+        else:
+            lines.append("- 当前所有已有重合的时段都与至少一位关键成员冲突，需要协调取舍。")
 
     if remarks:
         lines.append("")
@@ -510,30 +638,47 @@ def _build_local_summary(session_data: dict) -> str:
 
 def _build_ai_prompt(session_data: dict, fallback_summary: str) -> str:
     slots = _slot_stats(session_data)
+    required_people = _required_participants(session_data.get("participants", []))
     highlights = sorted(
         [slot for slot in slots if slot["avail_count"] > 0],
-        key=lambda item: (-item["avail_count"], item["busy_count"], item["unknown_count"], item["date"], item["hour"]),
+        key=_slot_rank_key,
     )[:5]
     highlight_lines = [
         f"- {_slot_label(slot)}：有空 {slot['avail_count']} 人，没空 {slot['busy_count']} 人，未填 {slot['unknown_count']} 人"
+        + (
+            f"，关键成员有空 {len(slot['required_available'])} 人，关键冲突 {', '.join(slot['required_busy'])}"
+            if required_people else ""
+        )
         for slot in highlights
     ] or ["- 暂无有效高亮时段"]
+    time_label = f"{session_data.get('hourS', 9)}:00 - {session_data.get('hourE', 21)}:00"
+    first_hour_s = session_data.get("firstHourS", session_data.get("hourS", 9))
+    last_hour_e = session_data.get("lastHourE", session_data.get("hourE", 21))
+    if first_hour_s != session_data.get("hourS", 9) or last_hour_e != session_data.get("hourE", 21):
+        time_label = (
+            f"每日 {time_label}；首日 {first_hour_s}:00 起；"
+            f"末日 {last_hour_e}:00 止"
+        )
 
     return (
         "请基于以下时间调查信息，用简洁中文输出 markdown 总结。\n\n"
         f"活动名称：{session_data.get('name', '时间调查')}\n"
         f"日期范围：{session_data.get('dateS', '')} 至 {session_data.get('dateE', '')}\n"
-        f"时间范围：{session_data.get('hourS', 9)}:00 - {session_data.get('hourE', 21)}:00\n"
+        f"时间范围：{time_label}\n"
         f"发起人提示：{session_data.get('creatorPrompt', '') or '无'}\n\n"
+        f"关键成员：{', '.join(participant.get('name', '未知') for participant in required_people) or '无'}\n"
+        "排序规则：关键成员明确没空时，该时段基本否决；关键成员有空时优先；关键成员未填写不直接否决。\n\n"
         "本地预分析：\n"
         f"{fallback_summary}\n\n"
         "高亮时段：\n"
         f"{'\n'.join(highlight_lines)}\n\n"
         "请按以下结构回答：\n"
         "## 推荐时段\n"
-        "- 给出最值得先讨论的时段和理由\n"
+        "- 优先考虑没有关键成员明确没空的时段，并说明关键成员覆盖情况\n"
         "## 协调建议\n"
-        "- 给出备选与沟通建议\n"
+        "- 给出备选与沟通建议，若关键成员冲突请明确指出\n"
+        "## 关键成员约束\n"
+        "- 概括关键成员是否被满足、哪些时段待确认\n"
         "## 参与者备注\n"
         "- 只在确实有备注或限制时输出\n"
     )
@@ -729,6 +874,7 @@ def join(sid):
                 "color": _safe_color(body.get("color")),
                 "avail": {},
                 "remark": "",
+                "isRequired": False,
                 "tokenHash": _hash_token(participant_token),
             }
         )
@@ -820,6 +966,8 @@ def update_session(sid):
             "dateE": body.get("dateE", session_data.get("dateE")),
             "hourS": body.get("hourS", session_data.get("hourS")),
             "hourE": body.get("hourE", session_data.get("hourE")),
+            "firstHourS": body.get("firstHourS", session_data.get("firstHourS", session_data.get("hourS"))),
+            "lastHourE": body.get("lastHourE", session_data.get("lastHourE", session_data.get("hourE"))),
             "creatorPrompt": body.get("creatorPrompt", session_data.get("creatorPrompt")),
             "expectedNames": body.get("expectedNames", session_data.get("expectedNames", [])),
         },
