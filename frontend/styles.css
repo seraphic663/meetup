@@ -159,7 +159,7 @@ button {
   padding: 30px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  gap: 18px;
   min-height: 540px;
   background:
     linear-gradient(160deg, rgba(255, 255, 255, 0.9), rgba(245, 255, 252, 0.8)),
@@ -222,11 +222,53 @@ button {
   line-height: 1.75;
 }
 
+.hero-guide {
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: var(--shadow-soft);
+}
+
+.hero-guide-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.hero-guide-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--brand-deep);
+}
+
+.hero-guide-link {
+  padding: 0;
+  background: none;
+  color: var(--brand-deep);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.hero-guide-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.hero-guide-item {
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
 .hero-metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
-  margin: 26px 0 20px;
+  margin: 0;
 }
 
 .hero-metric {
@@ -252,9 +294,14 @@ button {
   line-height: 1.5;
 }
 
+.hero-actions {
+  margin-top: auto;
+}
+
 .home-cards {
   display: grid;
   gap: 16px;
+  align-content: start;
 }
 
 .hc {
@@ -582,7 +629,7 @@ button {
 .setup-form,
 .join-card {
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 
 .card {
@@ -591,8 +638,12 @@ button {
   padding: 24px;
 }
 
+.setup-form .card {
+  padding: 18px 18px 16px;
+}
+
 .card-ttl {
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   color: var(--text-faint);
   font-size: 12px;
   font-weight: 800;
@@ -601,7 +652,7 @@ button {
 }
 
 .fg {
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .fg:last-child {
@@ -610,7 +661,7 @@ button {
 
 .fl {
   display: block;
-  margin-bottom: 7px;
+  margin-bottom: 6px;
   color: var(--text-soft);
   font-size: 13px;
   font-weight: 700;
@@ -635,14 +686,14 @@ button {
 }
 
 .fi {
-  padding: 13px 15px;
+  padding: 11px 14px;
   color: var(--text);
-  font-size: 15px;
+  font-size: 14px;
   outline: none;
 }
 
 select.fi {
-  min-height: 52px;
+  min-height: 46px;
   cursor: pointer;
   -webkit-appearance: menulist;
   appearance: auto;
@@ -661,9 +712,9 @@ select.fi option {
 
 .prompt-input,
 .remark-input {
-  min-height: 108px;
+  min-height: 92px;
   resize: vertical;
-  line-height: 1.7;
+  line-height: 1.6;
 }
 
 .prompt-helper,
@@ -674,16 +725,120 @@ select.fi option {
 .remark-meta,
 .sh-note,
 .prompt-body,
-.prompt-title {
+.prompt-title,
+.ai-draft-meta {
   color: var(--text-faint);
 }
 
 .prompt-helper,
 .tag-hint,
 .or-sep,
-.sh-note {
+.sh-note,
+.ai-draft-meta {
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.ai-create-input {
+  min-height: 78px;
+}
+
+.create-ai-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.create-ai-btn {
+  width: auto;
+}
+
+.ai-draft-panel {
+  margin-top: 10px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 118, 110, 0.14);
+  background: linear-gradient(135deg, rgba(223, 245, 242, 0.9), rgba(255, 255, 255, 0.94));
+}
+
+.ai-draft-panel.hidden {
+  display: none;
+}
+
+.ai-draft-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.ai-draft-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--brand-deep);
+}
+
+.ai-draft-badge {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.1);
+  color: var(--brand-deep);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ai-draft-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ai-draft-item {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.ai-draft-label {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-faint);
+  letter-spacing: 0.04em;
+}
+
+.ai-draft-value {
+  color: var(--text);
   font-size: 13px;
-  line-height: 1.7;
+  font-weight: 700;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.ai-draft-list {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.ai-draft-list.warning .ai-draft-list-title {
+  color: #b45309;
+}
+
+.ai-draft-list-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--brand-deep);
+  letter-spacing: 0.04em;
+}
+
+.ai-draft-list ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .prompt-tools {
@@ -724,15 +879,15 @@ select.fi option {
 .fi-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .tag-wrap {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  min-height: 52px;
-  padding: 9px 10px;
+  min-height: 46px;
+  padding: 8px 9px;
   cursor: text;
 }
 
@@ -740,11 +895,11 @@ select.fi option {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 6px 7px 6px 11px;
+  padding: 5px 7px 5px 10px;
   border-radius: 999px;
   background: var(--brand-soft);
   color: var(--brand-deep);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -821,7 +976,7 @@ select.fi option {
 }
 
 .create-btn {
-  margin-top: 2px;
+  margin-top: 0;
 }
 
 .ev-card {
@@ -1998,6 +2153,10 @@ tr.other-row.collapsed {
     gap: 0;
   }
 
+  .ai-draft-grid {
+    grid-template-columns: 1fr;
+  }
+
   .hdr-inner {
     align-items: stretch;
     flex-direction: column;
@@ -2098,4 +2257,50 @@ tr.other-row.collapsed {
 #toast.show {
   transform: translateX(-50%) translateY(0);
   opacity: 1;
+}
+
+/* =========================================
+   1.6.0 设计质感升级附加样式 
+   ========================================= */
+
+/* 按钮微动效与呼吸感 */
+.btn-p {
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s !important;
+}
+.btn-p:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(15, 118, 110, 0.25);
+  opacity: 0.95;
+}
+.btn-p:active {
+  transform: translateY(0);
+}
+
+/* 卡片悬浮与景深 */
+.hc, .card {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  will-change: transform, box-shadow;
+}
+.hc:hover, .card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow);
+}
+
+/* 输入框与焦点光晕 (Focus Ring) */
+.fi, .prompt-input, select, textarea {
+  transition: border-color 0.25s ease, box-shadow 0.25s ease !important;
+  outline: none;
+}
+.fi:focus, .prompt-input:focus, select:focus, textarea:focus {
+  border-color: var(--brand) !important;
+  box-shadow: 0 0 0 3px var(--brand-soft) !important;
+}
+
+/* 次要按钮与引导链接 */
+.hero-guide-link {
+  transition: color 0.2s ease, opacity 0.2s ease !important;
+}
+.hero-guide-link:hover {
+  opacity: 0.8;
+  text-decoration: underline;
 }

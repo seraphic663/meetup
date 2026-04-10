@@ -25,21 +25,31 @@
         <div class="home-title">群约小助手</div>
         <div class="home-desc">把群聊里最耗时的“大家什么时候有空”变成一张清晰可协作的时间表。</div>
       </div>
-      <div class="hero-metrics">
-        <div class="hero-metric">
-          <span class="hero-metric-value">3 态</span>
-          <span class="hero-metric-label">有空 / 没空 / 未填</span>
+      <div class="hero-guide">
+        <div class="hero-guide-head">
+          <span class="hero-guide-title">如何使用</span>
+          <button class="hero-guide-link" type="button" onclick="showTutorial()">查看完整教程</button>
         </div>
-        <div class="hero-metric">
-          <span class="hero-metric-value">实时</span>
-          <span class="hero-metric-label">所有人同步更新</span>
-        </div>
-        <div class="hero-metric">
-          <span class="hero-metric-value">AI</span>
-          <span class="hero-metric-label">一键总结推荐时段</span>
+        <div class="hero-guide-list">
+          <div class="hero-guide-item">1. 创建一张表，生成链接发到群里</div>
+          <div class="hero-guide-item">2. 大家按三态填写可参与时段</div>
+          <div class="hero-guide-item">3. 按时间或人员视角快速看重合结果</div>
         </div>
       </div>
-      <button class="btn-p btn-hero" type="button" onclick="goToSetup()">立即创建调查</button>
+      <div class="hero-metrics">
+        <div class="hero-metric">
+          <span class="hero-metric-value">3 态：<span style="font-weight: normal; color: var(--text-soft); font-size: 0.85em;">有空 / 没空 / 未填</span></span>
+        </div>
+        <div class="hero-metric">
+          <span class="hero-metric-value">实时：<span style="font-weight: normal; color: var(--text-soft); font-size: 0.85em;">所有人同步更新</span></span>
+        </div>
+        <div class="hero-metric">
+          <span class="hero-metric-value">AI：<span style="font-weight: normal; color: var(--text-soft); font-size: 0.85em;">一键总结推荐时段</span></span>
+        </div>
+      </div>
+      <div class="hero-actions">
+        <button class="btn-p btn-hero" type="button" onclick="goToSetup()">立即创建调查</button>
+      </div>
     </div>
 
     <div class="home-cards">
@@ -65,20 +75,6 @@
         <div class="hc-ttl">最近表格</div>
         <div class="hc-desc" id="historyDesc">上次使用的表格们</div>
         <div class="hc-list hc-list-history" id="historyList"></div>
-      </button>
-
-      <button class="hc" type="button" onclick="showTutorial()">
-        <div class="hc-head">
-          <div class="hc-ico">📖</div>
-          <div class="hc-tag">Guide</div>
-        </div>
-        <div class="hc-ttl">如何使用</div>
-        <div class="hc-desc">2 分钟看懂三态填写、布局切换、分享协作和 AI 总结。</div>
-        <div class="hc-list">
-          <div class="hc-item">点一下切换状态，拖动可批量填写</div>
-          <div class="hc-item">按时间或按人员两种视图切换</div>
-          <div class="hc-item">打开同一链接即可多人协作</div>
-        </div>
       </button>
 
       <details class="hc hc-log">
@@ -113,16 +109,21 @@
 <section id="setupScreen" class="screen screen-setup">
   <div class="setup-shell">
     <div class="setup-intro">
-      <div class="logo-area">
+      <div class="logo-area" style="cursor: pointer;" onclick="goToHome()">
         <div class="logo-emoji">📅</div>
         <div class="logo-name">群约小助手</div>
         <div class="logo-desc">发起时间调查后，大家打开同一个链接，各自填写可参与时段。</div>
       </div>
       <div class="setup-note">
-        <div class="setup-note-title">这次创建会顺带帮你完成三件事</div>
-        <div class="setup-note-item">自动生成一个可分享的专属链接</div>
-        <div class="setup-note-item">把你自己加入参与者名单</div>
-        <div class="setup-note-item">保留最近历史，回看更方便</div>
+        <div class="setup-note-title">AI 快速起草</div>
+        <div class="fg">
+          <label class="fl" for="sAIPrompt">一句话描述你的活动，指导 AI 填写表单：</label>
+          <textarea class="fi prompt-input ai-create-input" id="sAIPrompt" maxlength="300" placeholder="例如：下周二到周四晚 7-9 点约评审，Alice 必须到，Bob 一起。" style="min-height: 60px;"></textarea>
+        </div>
+        <div class="create-ai-actions" style="margin-top: 0px; text-align: center;">
+          <button class="btn-s create-ai-btn" id="createDraftBtn" type="button" onclick="generateCreateDraft()" style="width: 100%; border: 1px solid var(--text-faint); background: var(--card);">✨ 识别并填充表单</button>
+        </div>
+        <div class="ai-draft-panel hidden" id="aiDraftPanel" style="margin-top: 16px;"></div>
       </div>
     </div>
 
@@ -166,8 +167,7 @@
         <div class="tag-hint">用于首尾截断。中间日期仍按上面的每日时间范围显示和填写。</div>
         <div class="fg">
           <label class="fl" for="sPrompt">发起人提示语 <span class="field-optional">可选</span></label>
-          <div class="prompt-helper">会展示给所有参与者，建议写清优先级与约束，例如线下优先、可晚到 15 分钟。</div>
-          <textarea class="fi prompt-input" id="sPrompt" maxlength="200" placeholder="例如：优先线下，尽量安排在工作日晚上"></textarea>
+          <textarea class="fi prompt-input" id="sPrompt" maxlength="200" placeholder="展示给所有参与者，例如：优先线下，尽量安排在工作日晚上"></textarea>
           <div class="prompt-tools">
             <div class="prompt-quick">
               <button class="prompt-chip" type="button" onclick="fillPromptTemplate('工作日晚间优先，线下参加优先。')">工作日晚间优先</button>
@@ -176,7 +176,6 @@
             </div>
             <div class="prompt-count" id="sPromptCount">0/200</div>
           </div>
-          <div class="tag-hint">这段提示会和调查一起展示，帮助大家在同一套约束下填写。</div>
         </div>
       </div>
 

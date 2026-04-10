@@ -27,6 +27,7 @@ export const TUTORIAL_STEPS = [
 ];
 
 export const CHANGELOG_ITEMS = [
+  { version: '1.5.2', title: 'AI 起草建表版', date: '2026-04-10', summary: '支持一句话生成创建草稿，自动识别时间、参与者与关键成员预设。' },
   { version: '1.5.1', title: '关键成员约束版', date: '2026-04-10', summary: '支持创建者标记关键成员，并让表格汇总与 AI 推荐按关键成员约束优先排序。' },
   { version: '1.5.0', title: '首尾截断与偏好版', date: '2026-04-10', summary: '支持首尾截断时间、不可填写区显示、用户默认视图设置，并修复管理弹窗时间选择。' },
   { version: '1.4.3', title: '本地启动修复版', date: '2026-04-09', summary: '修复本地运行时静态脚本 404 与时间下拉框失效问题。' },

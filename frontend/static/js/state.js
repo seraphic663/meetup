@@ -20,4 +20,5 @@ export const state = {
   tutorialStep: 0,
   tags: [],
   pickedJoinName: null,
+  aiCreateDraft: null,
 };
