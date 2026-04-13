@@ -5,27 +5,27 @@ from __future__ import annotations
 from datetime import date, timedelta
 from flask import Flask, g, jsonify, request, send_from_directory
 import hashlib
-import logging
 import json
+import logging
 import os
 import re
 import secrets
-import sqlite3
 import time
 
 import requests
 from werkzeug.exceptions import HTTPException
 
 from .create_draft import AI_DRAFT_TEXT_MAX, generate_ai_create_draft, normalize_create_draft_defaults
+from . import storage
 
 app = Flask(__name__, static_folder=None)
 MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(MODULE_DIR)
 FRONTEND_DIR = os.path.join(ROOT_DIR, "frontend")
 STATIC_DIR = os.path.join(FRONTEND_DIR, "static")
-DB_PATH = os.environ.get("DB_PATH", os.path.join(ROOT_DIR, "sessions", "sessions.db"))
-DB_USES_URI = DB_PATH.startswith("file:")
-KEEPALIVE_DB = None
+DB_PATH = storage.DB_PATH
+DB_USES_URI = storage.DB_USES_URI
+KEEPALIVE_DB = storage.KEEPALIVE_DB
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
@@ -47,34 +47,13 @@ logger = logging.getLogger("meetup")
 
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH, uri=DB_USES_URI)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return storage.get_db()
 
 
 def init_db():
+    storage.init_db()
     global KEEPALIVE_DB
-
-    if DB_USES_URI and "mode=memory" in DB_PATH:
-        KEEPALIVE_DB = sqlite3.connect(DB_PATH, uri=True)
-        KEEPALIVE_DB.row_factory = sqlite3.Row
-        db = KEEPALIVE_DB
-    else:
-        os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
-        db = get_db()
-
-    db.execute(
-        """
-        CREATE TABLE IF NOT EXISTS sessions (
-            id   TEXT PRIMARY KEY,
-            data TEXT NOT NULL,
-            ts   INTEGER NOT NULL
-        )
-        """
-    )
-    db.commit()
-    if db is not KEEPALIVE_DB:
-        db.close()
+    KEEPALIVE_DB = storage.KEEPALIVE_DB
 
 
 init_db()
@@ -119,21 +98,15 @@ def _sanitize_sid(sid: str) -> str:
 
 def _load(sid: str):
     sid = _sanitize_sid(sid)
-    with get_db() as db:
-        row = db.execute("SELECT data FROM sessions WHERE id=?", (sid,)).fetchone()
-        return _normalize_session_data(json.loads(row["data"])) if row else None
+    payload = storage.load_session(sid)
+    return _normalize_session_data(payload) if payload else None
 
 
 def _save(sid: str, payload: dict) -> None:
     sid = _sanitize_sid(sid)
     normalized = _normalize_session_data(payload) or payload
     normalized["id"] = sid
-    with get_db() as db:
-        db.execute(
-            "INSERT OR REPLACE INTO sessions(id,data,ts) VALUES(?,?,?)",
-            (sid, json.dumps(normalized, ensure_ascii=False), int(time.time())),
-        )
-        db.commit()
+    storage.save_session(sid, normalized)
 
 
 def _clean_text(value, limit: int) -> str:
@@ -186,9 +159,7 @@ def _safe_color(value: str | None, fallback: str = "#FF6B35") -> str:
 
 def _delete(sid: str) -> None:
     sid = _sanitize_sid(sid)
-    with get_db() as db:
-        db.execute("DELETE FROM sessions WHERE id=?", (sid,))
-        db.commit()
+    storage.delete_session(sid)
 
 
 def _iter_dates(session_data: dict):

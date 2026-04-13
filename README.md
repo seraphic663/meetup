@@ -60,7 +60,7 @@ python run.py
    - `DEEPSEEK_API_KEY` = 你的 DeepSeek API Key
 3. Railway 自动部署，用 `Procfile` 里的 gunicorn 命令启动
 
-数据存储在 SQLite（`sessions/sessions.db`），Railway 重启后数据会丢失，如需持久化需挂载 Volume 并设置 `DB_PATH` 环境变量。
+数据存储在 SQLite（默认 `sessions/sessions.db`），当前已拆为多张业务表（`sessions / session_expected_names / session_required_names / participants / availability`）。Railway 重启后数据会丢失，如需持久化需挂载 Volume 并设置 `DB_PATH` 环境变量。
 
 ---
 
@@ -69,7 +69,7 @@ python run.py
 | 层 | 技术 |
 |----|------|
 | 前端 | 原生 HTML / CSS / JS（响应式界面） |
-| 后端 | Flask 3 + SQLite |
+| 后端 | Flask 3 + SQLite（多表存储） |
 | AI | DeepSeek API (`deepseek-chat`) |
 | 部署 | Railway + Gunicorn |
 | CI | GitHub Actions |
@@ -79,7 +79,7 @@ python run.py
 ## 文件结构
 
 ```
-backend/               # Flask 后端实现
+backend/               # Flask 后端实现（含 storage.py 存储层）
 frontend/              # HTML / CSS 与前端模块
 docs/                  # 项目文档
 tests/                 # 接口冒烟测试
