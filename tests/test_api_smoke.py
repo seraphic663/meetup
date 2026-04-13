@@ -433,6 +433,45 @@ class TestApiSmoke(unittest.TestCase):
         self.assertEqual(session.get("requiredNames"), ["Alice", "Bob"])
         self.assertEqual(participant.get("isRequired"), True)
 
+    def test_16_delete_session_cascades_storage_rows(self):
+        sid, creator_token = self._create_session()
+        alice = self._join_session(sid, "Alice", "#00AAFF")
+        self.client.put(
+            f"/api/session/{sid}/avail",
+            headers={"X-Participant-Token": alice["participantToken"]},
+            json={
+                "name": "Alice",
+                "avail": {"2026-03-20": {"9": 1, "10": 2}},
+                "remark": "测试级联删除",
+            },
+        )
+
+        with server.get_db() as db:
+            session_count = db.execute("SELECT COUNT(*) AS c FROM sessions WHERE id=?", (sid,)).fetchone()["c"]
+            participant_count = db.execute("SELECT COUNT(*) AS c FROM participants WHERE session_id=?", (sid,)).fetchone()["c"]
+            availability_count = db.execute("SELECT COUNT(*) AS c FROM availability WHERE session_id=?", (sid,)).fetchone()["c"]
+
+        self.assertEqual(session_count, 1)
+        self.assertEqual(participant_count, 1)
+        self.assertEqual(availability_count, 2)
+
+        delete_resp = self.client.delete(
+            f"/api/session/{sid}",
+            headers={"X-Creator-Token": creator_token},
+        )
+        self.assertEqual(delete_resp.status_code, 200)
+
+        with server.get_db() as db:
+            session_count = db.execute("SELECT COUNT(*) AS c FROM sessions WHERE id=?", (sid,)).fetchone()["c"]
+            expected_count = db.execute("SELECT COUNT(*) AS c FROM session_expected_names WHERE session_id=?", (sid,)).fetchone()["c"]
+            participant_count = db.execute("SELECT COUNT(*) AS c FROM participants WHERE session_id=?", (sid,)).fetchone()["c"]
+            availability_count = db.execute("SELECT COUNT(*) AS c FROM availability WHERE session_id=?", (sid,)).fetchone()["c"]
+
+        self.assertEqual(session_count, 0)
+        self.assertEqual(expected_count, 0)
+        self.assertEqual(participant_count, 0)
+        self.assertEqual(availability_count, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

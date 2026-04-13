@@ -3,6 +3,8 @@
 日期：2026-03-29  
 适用范围：当前仓库默认数据存储 `sessions/sessions.db`
 
+说明：当前 SQLite 库已按业务拆为多张表（`sessions / session_expected_names / session_required_names / participants / availability`），但备份与恢复仍然按单个 `.db` 文件处理。
+
 ---
 
 ## 1. 目标
