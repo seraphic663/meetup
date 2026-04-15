@@ -125,9 +125,9 @@ def _new_participant_id() -> str:
     return secrets.token_hex(6)
 
 
-def _legacy_participant_id(name: str) -> str:
+def _stable_participant_id(name: str) -> str:
     digest = hashlib.sha1(str(name or "").encode("utf-8")).hexdigest()[:10]
-    return f"legacy_{digest}"
+    return f"participant_{digest}"
 
 
 def _parse_date(value):
@@ -219,7 +219,7 @@ def _normalize_participants(session_data: dict, raw_participants, existing_by_id
 
         raw_id = _clean_text(raw.get("id"), 32)
         existing = existing_by_id.get(raw_id) if raw_id else None
-        participant_id = raw_id or (existing.get("id") if existing else "") or _legacy_participant_id(name)
+        participant_id = raw_id or (existing.get("id") if existing else "") or _stable_participant_id(name)
         if participant_id in seen_ids:
             participant_id = _new_participant_id()
 
@@ -435,7 +435,6 @@ def _viewer_context(session_data: dict):
 def _public_session(session_data: dict):
     viewer = _viewer_context(session_data)
     creator = session_data.get("creator", {})
-    legacy_delete = not creator.get("tokenHash")
     return {
         "id": session_data.get("id"),
         "schemaVersion": session_data.get("schemaVersion", 1),
@@ -468,7 +467,7 @@ def _public_session(session_data: dict):
         },
         "capabilities": {
             "canManageSession": viewer["is_creator"],
-            "canDeleteSession": viewer["is_creator"] or legacy_delete,
+            "canDeleteSession": viewer["is_creator"],
             "canManageParticipants": viewer["is_creator"],
             "canLeaveSession": bool(viewer["participant"]),
             "canEditOwnAvailability": bool(viewer["participant"]),
@@ -483,18 +482,10 @@ def _creator_required(session_data: dict):
     return None
 
 
-def _participant_for_write(session_data: dict, body_name: str | None = None):
+def _participant_for_write(session_data: dict):
     viewer = _viewer_context(session_data)
     if viewer["participant"]:
         return viewer["participant"]
-
-    name = _clean_text(body_name, PERSON_NAME_MAX)
-    if not name:
-        return None
-
-    participant = next((item for item in session_data.get("participants", []) if item.get("name") == name), None)
-    if participant and not participant.get("tokenHash") and not session_data.get("creator", {}).get("tokenHash"):
-        return participant
     return None
 
 
@@ -965,7 +956,7 @@ def avail(sid):
         body = _json_body()
     except ValueError as exc:
         return _api_error("invalid_json", 400, str(exc))
-    participant = _participant_for_write(session_data, body.get("name"))
+    participant = _participant_for_write(session_data)
     if participant is None:
         return _api_error("participant_auth_required", 403, "需要先以参与者身份进入后才能填写")
 
@@ -1059,8 +1050,7 @@ def delete_session(sid):
     if not session_data:
         return _api_error("not_found", 404, "会话不存在")
 
-    legacy_session = not session_data.get("creator", {}).get("tokenHash")
-    if not legacy_session and not _creator_required(session_data):
+    if not _creator_required(session_data):
         return _api_error("creator_auth_required", 403, "只有创建者可以删除整张表")
 
     _delete(sid)
@@ -1069,9 +1059,9 @@ def delete_session(sid):
         "session_deleted",
         request_id=_request_id(),
         session_id=sid,
-        mode="legacy_open_delete" if legacy_session else "creator_only",
+        mode="creator_only",
     )
-    return jsonify({"ok": True, "legacy": legacy_session})
+    return jsonify({"ok": True})
 
 
 @app.route("/api/session/<sid>/participants/<pid>", methods=["DELETE"])

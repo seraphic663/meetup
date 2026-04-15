@@ -12,7 +12,6 @@ import {
   saveCreatorToken,
   saveParticipantAccess,
   saveParticipantName,
-  saveSessionFlags,
   saveToHistory,
 } from './history.js';
 import { $, clone, dayDiff, dfmt, esc, getDates, getHours, getSlotSummary, getState, isSlotEnabled, normalizeAvail, showScreen, toast } from './helpers.js';
@@ -179,7 +178,7 @@ function renderCreateDraftPanel() {
   }
 
   const { draft, notes = [], warnings = [], source } = result;
-  const sourceLabel = source === 'ai' ? 'AI 识别' : '本地规则';
+  const sourceLabel = source === 'ai' ? 'AI 识别' : '手动回退';
   const participants = draft.expectedNames?.length ? draft.expectedNames.join('、') : '未识别';
   const required = draft.requiredNames?.length ? draft.requiredNames.join('、') : '无';
   panel.innerHTML = `
@@ -250,9 +249,6 @@ function applySession(session) {
   state.S = session;
   state.S.participants.forEach(participant => {
     participant.avail = normalizeAvail(participant.avail);
-  });
-  saveSessionFlags(state.SID, {
-    legacyCanDelete: Boolean(state.S?.capabilities?.canDeleteSession && !state.S?.viewer?.isCreator && !getSessionAccess(state.SID).creatorToken),
   });
 
   if (state.S.viewer?.participantId) {

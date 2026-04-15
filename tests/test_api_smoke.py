@@ -157,7 +157,12 @@ class TestApiSmoke(unittest.TestCase):
             },
         )
 
-        resp = self.client.get(f"/api/session/{sid}/summary")
+        previous_key = server.DEEPSEEK_API_KEY
+        setattr(server, "DEEPSEEK_API_KEY", "")
+        try:
+            resp = self.client.get(f"/api/session/{sid}/summary")
+        finally:
+            setattr(server, "DEEPSEEK_API_KEY", previous_key)
         self.assertEqual(resp.status_code, 200)
         summary = resp.get_json().get("summary", "")
         self.assertIn("## 推荐时段", summary)
@@ -241,13 +246,13 @@ class TestApiSmoke(unittest.TestCase):
         self.assertEqual(creator_delete_resp.status_code, 200)
         self.assertEqual(creator_delete_resp.get_json().get("ok"), True)
 
-    def test_10_legacy_session_can_delete_without_creator_token(self):
-        sid = "legacy01"
+    def test_10_session_without_creator_token_cannot_delete_openly(self):
+        sid = "oldopen01"
         server._save(
             sid,
             {
                 "id": sid,
-                "name": "旧会话",
+                "name": "无创建者令牌会话",
                 "dateS": "2026-03-20",
                 "dateE": "2026-03-20",
                 "hourS": 9,
@@ -259,10 +264,9 @@ class TestApiSmoke(unittest.TestCase):
         )
 
         resp = self.client.delete(f"/api/session/{sid}")
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.get_json().get("ok"), True)
-        self.assertEqual(resp.get_json().get("legacy"), True)
-        self.assertIsNone(server._load(sid))
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.get_json().get("error", {}).get("code"), "creator_auth_required")
+        self.assertIsNotNone(server._load(sid))
 
     def test_11_truncated_range_blocks_invalid_slots(self):
         resp = self.client.post(
@@ -365,11 +369,11 @@ class TestApiSmoke(unittest.TestCase):
         )
 
         previous_key = server.DEEPSEEK_API_KEY
-        server.DEEPSEEK_API_KEY = ""
+        setattr(server, "DEEPSEEK_API_KEY", "")
         try:
             summary_resp = self.client.get(f"/api/session/{sid}/summary")
         finally:
-            server.DEEPSEEK_API_KEY = previous_key
+            setattr(server, "DEEPSEEK_API_KEY", previous_key)
 
         self.assertEqual(summary_resp.status_code, 200)
         summary = summary_resp.get_json().get("summary", "")
@@ -377,43 +381,64 @@ class TestApiSmoke(unittest.TestCase):
         self.assertIn("Alice", summary)
         self.assertIn("关键成员冲突", summary)
 
-    def test_14_create_draft_falls_back_and_returns_structured_payload(self):
+    def test_14_create_draft_fallback_returns_defaults_without_local_nlp(self):
         previous_key = server.DEEPSEEK_API_KEY
-        server.DEEPSEEK_API_KEY = ""
+        setattr(server, "DEEPSEEK_API_KEY", "")
         try:
             resp = self.client.post(
                 "/api/session/draft",
                 json={
                     "text": "2026-04-14到2026-04-16晚上7点到9点约产品评审，Alice和Bob必须到场，参与者包括Alice、Bob、Carol，尽量线下。",
                     "defaults": {
+                        "name": "当前活动",
+                        "dateS": "2026-04-20",
+                        "dateE": "2026-04-21",
+                        "hourS": 10,
+                        "hourE": 18,
                         "creatorName": "Host",
+                        "expectedNames": ["Alice"],
+                        "requiredNames": ["Alice"],
                     },
                 },
             )
         finally:
-            server.DEEPSEEK_API_KEY = previous_key
+            setattr(server, "DEEPSEEK_API_KEY", previous_key)
 
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         draft = data.get("draft", {})
         self.assertEqual(data.get("source"), "local")
-        self.assertEqual(draft.get("name"), "产品评审")
-        self.assertEqual(draft.get("dateS"), "2026-04-14")
-        self.assertEqual(draft.get("dateE"), "2026-04-16")
-        self.assertEqual(draft.get("hourS"), 19)
-        self.assertEqual(draft.get("hourE"), 21)
-        self.assertEqual(draft.get("requiredNames"), ["Alice", "Bob"])
-        self.assertEqual(draft.get("expectedNames"), ["Alice", "Bob", "Carol"])
-        self.assertIn("尽量线下", draft.get("creatorPrompt", ""))
+        self.assertEqual(draft.get("name"), "当前活动")
+        self.assertEqual(draft.get("dateS"), "2026-04-20")
+        self.assertEqual(draft.get("dateE"), "2026-04-21")
+        self.assertEqual(draft.get("hourS"), 10)
+        self.assertEqual(draft.get("hourE"), 18)
+        self.assertEqual(draft.get("requiredNames"), ["Alice"])
+        self.assertEqual(draft.get("expectedNames"), ["Alice"])
+        self.assertTrue(data.get("warnings"))
 
     def test_15_required_names_auto_apply_when_participant_joins(self):
-        draft_resp = self.client.post(
-            "/api/session/draft",
-            json={
-                "text": "2026-04-14到2026-04-16晚上7点到9点约产品评审，Alice和Bob必须到场，参与者包括Alice、Bob、Carol。",
-                "defaults": {"creatorName": "Host"},
-            },
-        )
+        previous_key = server.DEEPSEEK_API_KEY
+        setattr(server, "DEEPSEEK_API_KEY", "")
+        try:
+            draft_resp = self.client.post(
+                "/api/session/draft",
+                json={
+                    "text": "Alice和Bob必须到场。",
+                    "defaults": {
+                        "name": "产品评审",
+                        "dateS": "2026-04-14",
+                        "dateE": "2026-04-16",
+                        "hourS": 19,
+                        "hourE": 21,
+                        "creatorName": "Host",
+                        "expectedNames": ["Alice", "Bob", "Carol"],
+                        "requiredNames": ["Alice", "Bob"],
+                    },
+                },
+            )
+        finally:
+            setattr(server, "DEEPSEEK_API_KEY", previous_key)
         self.assertEqual(draft_resp.status_code, 200)
         draft = draft_resp.get_json().get("draft", {})
 

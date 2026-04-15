@@ -53,10 +53,6 @@ export function saveParticipantAccess(sessionId, { participantId, participantNam
   if (participantName) rememberLastName(participantName);
 }
 
-export function saveSessionFlags(sessionId, flags) {
-  saveSessionAccess(sessionId, current => ({ ...current, ...flags }));
-}
-
 export function clearParticipantAccess(sessionId) {
   saveSessionAccess(sessionId, current => {
     const next = { ...current };
