@@ -1,8 +1,24 @@
-#!/usr/bin/env sh
-# 提交前安全扫描：阻止潜在密钥进入仓库
-python scripts/security_guard.py --workspace
-if [ $? -ne 0 ]; then
-  echo "[pre-commit] 检测到潜在密钥，已阻止提交。"
-  exit 1
-fi
-exit 0
+#!/usr/bin/env python3
+"""提交前安全扫描：阻止潜在密钥进入仓库。"""
+
+import subprocess
+import sys
+from pathlib import Path
+
+
+def main() -> int:
+    root = Path(__file__).resolve().parents[1]
+    guard = root / "scripts" / "security_guard.py"
+    result = subprocess.run(
+        [sys.executable, str(guard), "--workspace"],
+        cwd=str(root),
+        text=True,
+    )
+    if result.returncode != 0:
+        print("[pre-commit] 检测到潜在密钥，已阻止提交。")
+        return result.returncode
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

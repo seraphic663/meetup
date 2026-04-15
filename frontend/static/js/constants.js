@@ -27,6 +27,9 @@ export const TUTORIAL_STEPS = [
 ];
 
 export const CHANGELOG_ITEMS = [
+  { version: '1.6.2', title: '兜底收缩与旧兼容清理版', date: '2026-04-15', summary: '收缩 AI 起草本地兜底，移除旧表格开放删除兼容路径。' },
+  { version: '1.6.1', title: '数据库存储重构版', date: '2026-04-13', summary: 'SQLite 切换为多表业务结构，API 与前端主流程保持稳定。' },
+  { version: '1.6.0', title: '设计质感升级版', date: '2026-04-10', summary: '升级整体视觉质感，创建页调整为左 AI 辅助、右人工确核布局。' },
   { version: '1.5.2', title: 'AI 起草建表版', date: '2026-04-10', summary: '支持一句话生成创建草稿，自动识别时间、参与者与关键成员预设。' },
   { version: '1.5.1', title: '关键成员约束版', date: '2026-04-10', summary: '支持创建者标记关键成员，并让表格汇总与 AI 推荐按关键成员约束优先排序。' },
   { version: '1.5.0', title: '首尾截断与偏好版', date: '2026-04-10', summary: '支持首尾截断时间、不可填写区显示、用户默认视图设置，并修复管理弹窗时间选择。' },

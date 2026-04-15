@@ -26,13 +26,13 @@ export function renderHistoryScreen() {
         `<button class="history-action-btn" type="button" onclick="event.stopPropagation(); goToSession('${item.id}')">打开</button>`,
       ];
 
-      if (access.creatorToken || access.legacyCanDelete) {
+      if (access.creatorToken) {
         actions.push(`<button class="history-action-btn danger" type="button" onclick="event.stopPropagation(); deleteSessionFromHistory('${item.id}')">删除整表</button>`);
       } else if (access.participantToken && access.participantId) {
         actions.push(`<button class="history-action-btn" type="button" onclick="event.stopPropagation(); leaveSessionFromHistory('${item.id}')">退出参与</button>`);
       }
 
-      const role = access.creatorToken ? '创建者' : (access.legacyCanDelete ? '旧表格' : (access.participantToken ? '参与者' : '访客'));
+      const role = access.creatorToken ? '创建者' : (access.participantToken ? '参与者' : '访客');
       return `<div class="history-entry">
         <span class="history-entry-copy">
           <span class="history-entry-title">${esc(item.name)}</span>

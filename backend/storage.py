@@ -40,7 +40,7 @@ def get_db():
     return _prepare_connection(sqlite3.connect(DB_PATH, uri=DB_USES_URI))
 
 
-def _schema_uses_legacy_sessions(db: sqlite3.Connection) -> bool:
+def _schema_uses_old_sessions(db: sqlite3.Connection) -> bool:
     row = db.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'"
     ).fetchone()
@@ -146,7 +146,7 @@ def init_db():
         os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
         db = get_db()
 
-    if _schema_uses_legacy_sessions(db):
+    if _schema_uses_old_sessions(db):
         _drop_all_tables(db)
     _create_tables(db)
     db.commit()
