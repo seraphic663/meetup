@@ -30,6 +30,7 @@ LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
+DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash").strip() or "deepseek-v4-flash"
 
 SESSION_NAME_MAX = 20
 PERSON_NAME_MAX = 10
@@ -684,7 +685,7 @@ def _deepseek_chat(user_prompt: str, *, temperature: float, max_tokens: int):
             "Content-Type": "application/json",
         },
         json={
-            "model": "deepseek-chat",
+            "model": DEEPSEEK_MODEL,
             "messages": [{"role": "user", "content": user_prompt}],
             "temperature": temperature,
             "max_tokens": max_tokens,
@@ -797,7 +798,14 @@ def assets(filename):
 
 @app.route("/healthz")
 def healthz():
-    return jsonify({"ok": True, "service": "meetup", "ai_configured": bool(DEEPSEEK_API_KEY)})
+    return jsonify(
+        {
+            "ok": True,
+            "service": "meetup",
+            "ai_configured": bool(DEEPSEEK_API_KEY),
+            "ai_model": DEEPSEEK_MODEL,
+        }
+    )
 
 
 @app.route("/api/session", methods=["POST"])
@@ -852,6 +860,7 @@ def create_draft():
         defaults,
         api_key=DEEPSEEK_API_KEY,
         api_url=DEEPSEEK_API_URL,
+        model=DEEPSEEK_MODEL,
         request_id=_request_id(),
         log_event=_log_event,
     )
