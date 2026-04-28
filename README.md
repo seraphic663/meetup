@@ -40,6 +40,9 @@ pip install -r requirements.txt
 # 可选：仅在当前终端会话注入 API Key（不要写入代码文件）
 $env:DEEPSEEK_API_KEY = "<YOUR_DEEPSEEK_API_KEY>"
 
+# 可选：覆盖默认模型（默认即 deepseek-v4-flash）
+$env:DEEPSEEK_MODEL = "deepseek-v4-flash"
+
 python run.py
 # 访问 http://localhost:5000
 # 健康检查 http://localhost:5000/healthz
@@ -62,6 +65,7 @@ python run.py
 1. Fork 本仓库，在 Railway 新建项目连接 GitHub
 2. 在服务的 **Variables** 标签页添加：
    - `DEEPSEEK_API_KEY` = 你的 DeepSeek API Key
+   - `DEEPSEEK_MODEL` = `deepseek-v4-flash`（可选，默认已是这个值）
 3. Railway 自动部署，用 `Procfile` 里的 gunicorn 命令启动
 
 数据存储在 SQLite（默认 `sessions/sessions.db`），当前已拆为多张业务表（`sessions / session_expected_names / session_required_names / participants / availability`）。Railway 重启后数据会丢失，如需持久化需挂载 Volume 并设置 `DB_PATH` 环境变量。
@@ -74,7 +78,7 @@ python run.py
 |----|------|
 | 前端 | 原生 HTML / CSS / JS（响应式界面） |
 | 后端 | Flask 3 + SQLite（多表存储） |
-| AI | DeepSeek API (`deepseek-chat`) |
+| AI | DeepSeek API (`deepseek-v4-flash`，可通过 `DEEPSEEK_MODEL` 覆盖) |
 | 部署 | Railway + Gunicorn |
 | CI | GitHub Actions |
 
@@ -101,6 +105,7 @@ sessions/              # SQLite 数据库目录（本地）
 
 ### 1) AI 总结失败怎么办？
 - 先确认 `DEEPSEEK_API_KEY` 已在当前环境注入。
+- 如需切换模型，确认 `DEEPSEEK_MODEL` 填写的是平台支持的模型名。
 - 未注入或调用失败时，会自动返回本地总结，核心排期功能仍可正常使用。
 
 ### 2) 为什么不能把 API Key 写在项目里？
@@ -125,6 +130,7 @@ python -m unittest tests/test_api_smoke.py -v
 
 3. 验证环境变量
    - `DEEPSEEK_API_KEY` 已配置（本地/部署平台）
+   - 如需覆盖默认模型，`DEEPSEEK_MODEL` 已配置为有效模型名
 
 4. 手测关键链路（至少 1 次）
    - 创建会话
@@ -149,6 +155,7 @@ python scripts/security_guard.py --workspace --history
 
 已落地：
 - 仅通过环境变量读取 `DEEPSEEK_API_KEY`（不在代码中硬编码）
+- AI 模型名统一通过 `DEEPSEEK_MODEL` 配置，默认使用 `deepseek-v4-flash`
 - 提供本地扫描脚本：`scripts/security_guard.py`
 - 提供应急与历史治理文档：`docs/安全收口执行清单.md`
 - 提供提交前防护：`.githooks/pre-commit`

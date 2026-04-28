@@ -228,7 +228,7 @@ def _build_ai_create_prompt(user_text: str, defaults: dict):
     )
 
 
-def _call_deepseek(user_prompt: str, api_key: str, api_url: str):
+def _call_deepseek(user_prompt: str, api_key: str, api_url: str, model: str):
     response = requests.post(
         api_url,
         headers={
@@ -236,7 +236,7 @@ def _call_deepseek(user_prompt: str, api_key: str, api_url: str):
             "Content-Type": "application/json",
         },
         json={
-            "model": "deepseek-chat",
+            "model": model,
             "messages": [{"role": "user", "content": user_prompt}],
             "temperature": 0.2,
             "max_tokens": 500,
@@ -254,12 +254,21 @@ def _call_deepseek(user_prompt: str, api_key: str, api_url: str):
     return content
 
 
-def generate_ai_create_draft(user_text: str, defaults: dict, *, api_key: str, api_url: str, request_id: str | None = None, log_event=None):
+def generate_ai_create_draft(
+    user_text: str,
+    defaults: dict,
+    *,
+    api_key: str,
+    api_url: str,
+    model: str,
+    request_id: str | None = None,
+    log_event=None,
+):
     if not api_key:
         return _local_session_draft(defaults, "AI 草稿生成不可用：未配置 API Key。")
 
     try:
-        raw_content = _call_deepseek(_build_ai_create_prompt(user_text, defaults), api_key, api_url)
+        raw_content = _call_deepseek(_build_ai_create_prompt(user_text, defaults), api_key, api_url, model)
         payload = _extract_json_object(raw_content)
         if not isinstance(payload, dict):
             raise RuntimeError("invalid_json")
