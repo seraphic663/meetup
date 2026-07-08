@@ -66,7 +66,7 @@ python run.py
 2. 在服务的 **Variables** 标签页添加：
    - `DEEPSEEK_API_KEY` = 你的 DeepSeek API Key
    - `DEEPSEEK_MODEL` = `deepseek-v4-flash`（可选，默认已是这个值）
-3. Railway 自动部署，用 `Procfile` 里的 gunicorn 命令启动
+3. Railway 自动部署，用 `Procfile` 里的 gunicorn 命令启动；如果 Railway 服务里仍保留旧 Start Command `gunicorn server:app ...`，根目录 `server.py` 会兼容转发到 `backend.server:app`
 
 数据存储在 SQLite（默认 `sessions/sessions.db`），当前已拆为多张业务表（`sessions / session_expected_names / session_required_names / participants / availability`）。Railway 重启后数据会丢失，如需持久化需挂载 Volume 并设置 `DB_PATH` 环境变量。
 
@@ -92,6 +92,7 @@ frontend/              # HTML / CSS 与前端模块
 docs/                  # 项目文档
 tests/                 # 接口冒烟测试
 scripts/               # 安全扫描与辅助脚本
+server.py              # Railway 旧 server:app 启动命令兼容入口
 run.py                 # 本地启动脚本
 启动.ps1               # Windows 启动脚本
 Procfile               # Railway 部署配置

@@ -497,6 +497,10 @@ class TestApiSmoke(unittest.TestCase):
         self.assertEqual(participant_count, 0)
         self.assertEqual(availability_count, 0)
 
+    def test_17_legacy_server_module_exports_app(self):
+        legacy_server = importlib.import_module("server")
+        self.assertIs(legacy_server.app, server.app)
+
 
 if __name__ == "__main__":
     unittest.main()

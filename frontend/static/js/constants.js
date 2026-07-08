@@ -27,6 +27,7 @@ export const TUTORIAL_STEPS = [
 ];
 
 export const CHANGELOG_ITEMS = [
+  { version: '1.6.4', title: 'Railway 启动兼容版', date: '2026-07-09', summary: '补充 server:app 兼容入口，避免旧 Railway Start Command 导致部署启动失败。' },
   { version: '1.6.3', title: 'AI 模型配置收口版', date: '2026-04-28', summary: '统一抽出 DEEPSEEK_MODEL，AI 草稿与 AI 总结共用同一模型配置。' },
   { version: '1.6.2', title: '兜底收缩与旧兼容清理版', date: '2026-04-15', summary: '收缩 AI 起草本地兜底，移除旧表格开放删除兼容路径。' },
   { version: '1.6.1', title: '数据库存储重构版', date: '2026-04-13', summary: 'SQLite 切换为多表业务结构，API 与前端主流程保持稳定。' },
