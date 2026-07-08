@@ -4,7 +4,7 @@
 
 版本演进记录见 [docs/更新日志.md](docs/更新日志.md)。以后每次 GitHub 更新都需要同步维护这份文档。
 
-**线上地址：** https://find-time1.up.railway.app/
+**线上地址：** https://find-time.up.railway.app/
 
 ---
 
