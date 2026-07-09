@@ -328,7 +328,32 @@ function showHome() {
 }
 
 function goToSession(sid) {
-  location.href = `/?s=${sid}`;
+  location.href = `/?s=${encodeURIComponent(sid)}`;
+}
+
+function parseSessionIdInput(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  try {
+    const url = new URL(raw, location.origin);
+    const sid = url.searchParams.get('s');
+    if (sid) return sid.trim();
+  } catch (_) {
+    // Continue with plain ID parsing below.
+  }
+
+  const queryMatch = raw.match(/[?&]s=([^&#\s]+)/);
+  if (queryMatch) return decodeURIComponent(queryMatch[1]).trim();
+  return raw;
+}
+
+function restoreSessionFromHome(event) {
+  event?.preventDefault();
+  const sid = parseSessionIdInput($('restoreSessionInput')?.value);
+  if (!sid) return toast('请先粘贴旧链接或输入表格 ID');
+  if (!/^[A-Za-z0-9_-]{3,64}$/.test(sid)) return toast('表格 ID 格式不正确，请粘贴完整分享链接');
+  goToSession(sid);
 }
 
 function goToHome() {
@@ -345,6 +370,13 @@ function goToSetup() {
 function goToHistory() {
   renderHistoryScreen();
   showScreen('historyScreen');
+}
+
+function removeSessionFromHistory(sid) {
+  removeHistoryItem(sid);
+  if (!$('historyScreen')?.classList.contains('hidden')) renderHistoryScreen();
+  renderHistoryCard();
+  toast('已从最近表格移除');
 }
 
 function initForm() {
@@ -1146,9 +1178,12 @@ async function init() {
       if (state.AUTO_JOIN && restoreParticipant(true)) return;
       renderJoin();
       showScreen('joinScreen');
-    } catch (_) {
-      toast('会话不存在或已过期');
-      setTimeout(() => { location.href = '/'; }, 2000);
+    } catch (error) {
+      const missing = error instanceof ApiError && error.status === 404;
+      window.history.replaceState(null, '', '/');
+      state.SID = null;
+      showHome();
+      toast(missing ? '表格不存在或已过期，可以在首页最近表格中删除该记录' : getApiMessage(error, '打开失败，请稍后重试'));
     }
     return;
   }
@@ -1170,6 +1205,7 @@ Object.assign(window, {
   goToHome,
   goToSession,
   goToSetup,
+  removeSessionFromHistory,
   leaveCurrentSession,
   leaveSessionFromHistory,
   joinSession,
@@ -1187,6 +1223,7 @@ Object.assign(window, {
   removeManageParticipant,
   removeTag,
   resumeSession,
+  restoreSessionFromHome,
   saveManagedSession,
   saveUserViewPreferences,
   setLayout,

@@ -27,6 +27,10 @@ export const TUTORIAL_STEPS = [
 ];
 
 export const CHANGELOG_ITEMS = [
+  { version: '1.6.8', title: '常驻历史栏收口版', date: '2026-07-09', summary: '首页合并恢复旧表和最近表格，没历史时也固定展示历史栏。' },
+  { version: '1.6.7', title: '旧表链接恢复版', date: '2026-07-09', summary: '首页常驻恢复旧表入口，可粘贴分享链接或表格 ID 打开旧表。' },
+  { version: '1.6.6', title: '失效历史记录清理版', date: '2026-07-09', summary: '打开不存在或过期表格时回到首页提示，并可直接从最近表格移除记录。' },
+  { version: '1.6.5', title: '高密度紧凑 UI 版', date: '2026-07-09', summary: '大幅压缩首页、创建页、工具栏和排期表格留白，提高单屏信息密度。' },
   { version: '1.6.4', title: 'Railway 启动兼容版', date: '2026-07-09', summary: '补充 server:app 兼容入口，避免旧 Railway Start Command 导致部署启动失败。' },
   { version: '1.6.3', title: 'AI 模型配置收口版', date: '2026-04-28', summary: '统一抽出 DEEPSEEK_MODEL，AI 草稿与 AI 总结共用同一模型配置。' },
   { version: '1.6.2', title: '兜底收缩与旧兼容清理版', date: '2026-04-15', summary: '收缩 AI 起草本地兜底，移除旧表格开放删除兼容路径。' },

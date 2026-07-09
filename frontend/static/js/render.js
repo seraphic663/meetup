@@ -6,15 +6,25 @@ import { $, describeTimeWindow, esc, fmtRange, getDates, getHours, getSlotSummar
 export function renderHistoryCard() {
   const history = loadHistory();
   renderHomeChangelog();
+  $('historyCard')?.classList.remove('hidden');
   if (history.length > 0) {
-    $('historyCard').classList.remove('hidden');
-    $('historyList').innerHTML = history.slice(0, 3).map(item => (
-      `<button class="history-mini-item" type="button" onclick="event.stopPropagation(); goToSession('${item.id}')">${esc(item.name)} <span>${item.dateS}</span></button>`
-    )).join('');
-    $('historyDesc').textContent = `${history.length} 个最近的表格`;
+    $('historyList').innerHTML = history.slice(0, 3).map(item => {
+      const sid = encodeURIComponent(item.id);
+      return `
+      <div class="history-mini-item">
+        <button class="history-mini-open" type="button" onclick="goToSession(decodeURIComponent('${sid}'))">
+          <span class="history-mini-title">${esc(item.name)}</span>
+          <span>${esc(item.dateS)}</span>
+        </button>
+        <button class="history-mini-remove" type="button" title="从最近表格移除" onclick="removeSessionFromHistory(decodeURIComponent('${sid}'))">删除</button>
+      </div>
+    `;
+    }).join('');
+    $('historyDesc').textContent = `${history.length} 个最近的表格；也可粘贴旧链接打开。`;
     return;
   }
-  $('historyCard').classList.add('hidden');
+  $('historyDesc').textContent = '暂无本机历史；粘贴旧链接或表格 ID 也能打开。';
+  $('historyList').innerHTML = '<div class="history-mini-empty">还没有最近表格。创建新表后会自动出现在这里。</div>';
 }
 
 export function renderHistoryScreen() {
@@ -22,14 +32,16 @@ export function renderHistoryScreen() {
   $('historyListFull').innerHTML = history.length > 0
     ? history.map(item => {
       const access = getSessionAccess(item.id);
+      const sid = encodeURIComponent(item.id);
       const actions = [
-        `<button class="history-action-btn" type="button" onclick="event.stopPropagation(); goToSession('${item.id}')">打开</button>`,
+        `<button class="history-action-btn" type="button" onclick="event.stopPropagation(); goToSession(decodeURIComponent('${sid}'))">打开</button>`,
+        `<button class="history-action-btn" type="button" onclick="event.stopPropagation(); removeSessionFromHistory(decodeURIComponent('${sid}'))">移除记录</button>`,
       ];
 
       if (access.creatorToken) {
-        actions.push(`<button class="history-action-btn danger" type="button" onclick="event.stopPropagation(); deleteSessionFromHistory('${item.id}')">删除整表</button>`);
+        actions.push(`<button class="history-action-btn danger" type="button" onclick="event.stopPropagation(); deleteSessionFromHistory(decodeURIComponent('${sid}'))">删除整表</button>`);
       } else if (access.participantToken && access.participantId) {
-        actions.push(`<button class="history-action-btn" type="button" onclick="event.stopPropagation(); leaveSessionFromHistory('${item.id}')">退出参与</button>`);
+        actions.push(`<button class="history-action-btn" type="button" onclick="event.stopPropagation(); leaveSessionFromHistory(decodeURIComponent('${sid}'))">退出参与</button>`);
       }
 
       const role = access.creatorToken ? '创建者' : (access.participantToken ? '参与者' : '访客');
@@ -41,7 +53,7 @@ export function renderHistoryScreen() {
         <span class="history-entry-actions">${actions.join('')}</span>
       </div>`;
     }).join('')
-    : '<div class="history-entry-meta" style="text-align:center;padding:20px">还没有历史记录呢</div>';
+    : '<div class="history-entry-empty">还没有历史记录。创建或打开表格后会自动出现在这里。</div>';
 }
 
 export function renderHomeChangelog() {

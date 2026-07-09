@@ -9,8 +9,6 @@
 </head>
 <body>
 <div class="site-backdrop" aria-hidden="true">
-  <div class="site-orb orb-a"></div>
-  <div class="site-orb orb-b"></div>
   <div class="site-grid"></div>
 </div>
 
@@ -67,15 +65,20 @@
         </div>
       </button>
 
-      <button id="historyCard" class="hc hidden" type="button" onclick="goToHistory()">
+      <div id="historyCard" class="hc hc-history">
         <div class="hc-head">
           <div class="hc-ico">🕐</div>
-          <div class="hc-tag">Recent</div>
+          <div class="hc-tag">History</div>
         </div>
-        <div class="hc-ttl">最近表格</div>
-        <div class="hc-desc" id="historyDesc">上次使用的表格们</div>
+        <div class="hc-ttl">历史栏</div>
+        <div class="hc-desc" id="historyDesc">粘贴旧链接，或从最近表格继续打开。</div>
+        <form class="restore-form" onsubmit="restoreSessionFromHome(event)">
+          <input id="restoreSessionInput" class="restore-input" type="text" placeholder="粘贴链接或输入表格 ID">
+          <button class="restore-submit" type="submit">打开</button>
+        </form>
+        <div class="history-section-title">最近表格</div>
         <div class="hc-list hc-list-history" id="historyList"></div>
-      </button>
+      </div>
 
       <details class="hc hc-log">
         <summary class="log-summary">

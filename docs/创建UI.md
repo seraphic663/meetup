@@ -15,6 +15,8 @@
 4. 进入会话页 `joinScreen`
 5. 主表格页 `mainScreen`
 
+当前 UI 采用高密度紧凑样式：`frontend/styles.css` 已整理为 v2 分区结构，把原来的紧凑覆盖层合并进对应模块规则。后续如果要继续调密度，优先按文件内分区修改相关模块，不要再追加新的全局覆盖层。
+
 这些页面都定义在：
 
 - [frontend/index.html](d:/temp/meetup/frontend/index.html)
@@ -153,7 +155,7 @@
 当前保留：
 
 - 创建新表
-- 最近表格
+- 历史栏（恢复旧表 + 最近表格）
 - 更新日志
 
 对应 HTML 在：
@@ -255,16 +257,25 @@
 - `renderCreateDraftPanel`
 - `createSession`
 
-### 场景 4：最近表格列表显示异常
+### 场景 4：历史栏或最近表格显示异常
 
 先看：
 
+- [frontend/index.html](d:/temp/meetup/frontend/index.html)
 - [frontend/static/js/render.js](d:/temp/meetup/frontend/static/js/render.js)
+- [frontend/static/js/app.js](d:/temp/meetup/frontend/static/js/app.js)
+- [frontend/static/js/history.js](d:/temp/meetup/frontend/static/js/history.js)
 
 重点搜：
 
 - `renderHistoryCard`
 - `renderHistoryScreen`
+- `restoreSessionFromHome`
+- `parseSessionIdInput`
+- `removeSessionFromHistory`
+- `removeHistoryItem`
+
+注意：首页“历史栏”是常驻入口，上半部支持粘贴旧分享链接或表格 ID，下半部展示当前域名下 `localStorage` 最近记录。即使最近记录为空，也要显示空状态，不要隐藏整块历史栏。首页“删除”只移除本地最近记录，用于清理过期或不存在的表格入口；创建者删除远端整表仍走 `deleteSessionFromHistory` / `deleteCurrentSession`。
 
 ## 如果要指导另一个人或 AI 修改 UI，应怎样描述
 
