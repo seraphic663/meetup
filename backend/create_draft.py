@@ -241,7 +241,7 @@ def _call_deepseek(user_prompt: str, api_key: str, api_url: str, model: str):
             "temperature": 0.2,
             "max_tokens": 500,
         },
-        timeout=10,
+        timeout=30,
     )
     if response.status_code != 200:
         raise RuntimeError(f"upstream_status_{response.status_code}")

@@ -690,7 +690,7 @@ def _deepseek_chat(user_prompt: str, *, temperature: float, max_tokens: int):
             "temperature": temperature,
             "max_tokens": max_tokens,
         },
-        timeout=10,
+        timeout=30,
     )
     if response.status_code != 200:
         raise RuntimeError(f"upstream_status_{response.status_code}")
