@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """提交前安全扫描：阻止潜在密钥进入仓库。"""
 
 import subprocess
