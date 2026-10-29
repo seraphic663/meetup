@@ -15,7 +15,7 @@ import {
   saveToHistory,
 } from './history.js';
 import { $, clone, dayDiff, dfmt, esc, showScreen, toast } from './helpers.js';
-import { getUserPreferences, saveUserPreferences } from './preferences.js';
+import { applyUserTheme, getUserPreferences, saveUserPreferences } from './preferences.js';
 import { getNextColor, renderHistoryCard, renderHistoryScreen, renderJoin, renderMain, renderPublicRemarks, renderRemarkCard, updateCollapseButton, updateRemarkCounter, updateRemarkHint } from './render.js';
 import { renderAISummary } from './summary.js';
 import { state } from './state.js';
@@ -30,55 +30,27 @@ function sessionHeaders(sessionId = state.SID) {
   return getSessionAuthHeaders(sessionId);
 }
 
-function resizeCreateAiInput() {
-  const input = $('sAIPrompt');
+function resizeSetupTextarea(input, minHeight) {
   if (!input || input.closest('#setupScreen')?.classList.contains('hidden')) return;
 
   input.style.height = 'auto';
   const styles = getComputedStyle(input);
   const borderHeight = parseFloat(styles.borderTopWidth) + parseFloat(styles.borderBottomWidth);
-  const minHeight = 76;
   const maxHeight = Math.max(minHeight, Math.min(window.innerHeight * 0.4, 320));
   const contentHeight = input.scrollHeight + borderHeight;
   input.style.height = `${Math.min(maxHeight, Math.max(minHeight, contentHeight))}px`;
 }
 
+function resizeCreateAiInput() {
+  resizeSetupTextarea($('sAIPrompt'), 76);
+}
+
+function resizeCreatorPromptInput() {
+  resizeSetupTextarea($('sPrompt'), 58);
+}
+
 function applyUserViewDefaults() {
   state.collapsed = state.userPrefs.collapsed;
-}
-
-function syncSettingsDraftButtons() {
-  $('prefCollapseOff')?.classList.toggle('active', !state.settingsDraft.collapsed);
-  $('prefCollapseOn')?.classList.toggle('active', state.settingsDraft.collapsed);
-}
-
-function openUserSettings() {
-  state.settingsDraft = { ...state.userPrefs };
-  syncSettingsDraftButtons();
-  $('settingsOverlay')?.classList.add('open');
-}
-
-function closeUserSettings() {
-  $('settingsOverlay')?.classList.remove('open');
-}
-
-function overlayBgSettings(event) {
-  if (event.target === $('settingsOverlay')) closeUserSettings();
-}
-
-function setSettingsCollapse(collapsed) {
-  state.settingsDraft.collapsed = Boolean(collapsed);
-  syncSettingsDraftButtons();
-}
-
-function saveUserViewPreferences() {
-  state.userPrefs = saveUserPreferences(state.settingsDraft);
-  applyUserViewDefaults();
-  if (!document.getElementById('mainScreen')?.classList.contains('hidden')) {
-    renderMainScreen();
-  }
-  closeUserSettings();
-  toast('用户设置已保存');
 }
 
 function fillHourOptions(select, fromHour, toHour) {
@@ -241,6 +213,7 @@ function applyCreateDraftToForm(draft) {
   if (draft.creatorPrompt) {
     $('sPrompt').value = draft.creatorPrompt;
     updatePromptCount();
+    resizeCreatorPromptInput();
   }
   if (draft.creatorName && !$('sMyName').value.trim()) $('sMyName').value = draft.creatorName;
   state.tags = [...(draft.expectedNames || [])];
@@ -456,7 +429,10 @@ function openQuickDemo() {
 }
 function goToSetup() {
   showScreen('setupScreen');
-  requestAnimationFrame(resizeCreateAiInput);
+  requestAnimationFrame(() => {
+    resizeCreateAiInput();
+    resizeCreatorPromptInput();
+  });
 }
 
 function goToHistory() {
@@ -525,8 +501,12 @@ function initForm() {
   tagInput.addEventListener('focus', () => $('tagWrap').classList.add('focused'));
   tagInput.addEventListener('blur', () => $('tagWrap').classList.remove('focused'));
 
-  $('sPrompt').addEventListener('input', updatePromptCount);
+  $('sPrompt').addEventListener('input', () => {
+    updatePromptCount();
+    resizeCreatorPromptInput();
+  });
   $('sAIPrompt')?.addEventListener('input', resizeCreateAiInput);
+  window.addEventListener('resize', resizeCreatorPromptInput);
   window.addEventListener('resize', resizeCreateAiInput);
   $('managePrompt')?.addEventListener('input', updateManagePromptCount);
   updatePromptCount();
@@ -663,12 +643,6 @@ function updatePromptCount() {
   $('sPromptCount').textContent = `${value.length}/200`;
 }
 
-function fillPromptTemplate(text) {
-  $('sPrompt').value = String(text || '').slice(0, 200);
-  updatePromptCount();
-  $('sPrompt').focus();
-}
-
 function pickChip(element, name) {
   document.querySelectorAll('.nchip').forEach(node => node.classList.remove('active'));
   element.classList.add('active');
@@ -736,6 +710,7 @@ function switchUser() {
 
 function setCollapseState(collapsed) {
   state.collapsed = Boolean(collapsed);
+  state.userPrefs = saveUserPreferences({ ...state.userPrefs, collapsed: state.collapsed });
   updateCollapseButton();
   renderTimeline();
 }
@@ -1167,8 +1142,9 @@ async function init() {
   state.SID = params.get('s');
   state.AUTO_JOIN = params.get('auto_join') === '1';
   state.userPrefs = getUserPreferences();
-  state.settingsDraft = { ...state.userPrefs };
+  applyUserTheme(state.userPrefs.theme);
   applyUserViewDefaults();
+  startTimeline();
   initForm();
 
   if (state.SID) {
@@ -1198,12 +1174,10 @@ async function init() {
 Object.assign(window, {
   addTag,
   closeAISummary,
-  closeUserSettings,
   closeShare,
   copyUrl,
   createSession,
   generateCreateDraft,
-  fillPromptTemplate,
   focusTagInput,
   goToHistory,
   goToHome,
@@ -1218,11 +1192,9 @@ Object.assign(window, {
   openManageSession,
   openAISummary,
   openShare,
-  openUserSettings,
   overlayBg,
   overlayBgAI,
   overlayBgManage,
-  overlayBgSettings,
   pickChip,
   expandOthers,
   collapseOthers,
@@ -1231,8 +1203,6 @@ Object.assign(window, {
   resumeSession,
   restoreSessionFromHome,
   saveManagedSession,
-  saveUserViewPreferences,
-  setSettingsCollapse,
   showTutorial,
   skipTutorial,
   switchUser,
