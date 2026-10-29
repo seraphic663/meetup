@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#0f766e">
   <title>群约小助手</title>
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/static/timeline.css">
 </head>
 <body>
 <div class="site-backdrop" aria-hidden="true">
@@ -30,13 +31,13 @@
         </div>
         <div class="hero-guide-list">
           <div class="hero-guide-item">1. 创建一张表，生成链接发到群里</div>
-          <div class="hero-guide-item">2. 大家按三态填写可参与时段</div>
-          <div class="hero-guide-item">3. 按时间或人员视角快速看重合结果</div>
+          <div class="hero-guide-item">2. 大家拖动时间条标记不方便或偏好时段</div>
+          <div class="hero-guide-item">3. 按连续时间段查看重合结果</div>
         </div>
       </div>
       <div class="hero-metrics">
         <div class="hero-metric">
-          <span class="hero-metric-value">3 态：<span style="font-weight: normal; color: var(--text-soft); font-size: 0.85em;">有空 / 没空 / 未填</span></span>
+          <span class="hero-metric-value">时间段：<span style="font-weight: normal; color: var(--text-soft); font-size: 0.85em;">不方便 / 更偏好 / 普通候选</span></span>
         </div>
         <div class="hero-metric">
           <span class="hero-metric-value">实时：<span style="font-weight: normal; color: var(--text-soft); font-size: 0.85em;">所有人同步更新</span></span>
@@ -47,6 +48,7 @@
       </div>
       <div class="hero-actions">
         <button class="btn-p btn-hero" type="button" onclick="goToSetup()">立即创建调查</button>
+        <button class="btn-s btn-hero" type="button" onclick="openQuickDemo()">快速预览（示例表）</button>
       </div>
     </div>
 
@@ -257,11 +259,11 @@
       </div>
       <div class="hdr-actions">
         <button class="hdr-btn-alt" type="button" onclick="goToHome()">回首页</button>
-        <button class="hdr-btn-alt" type="button" onclick="switchUser()">换人</button>
+        <button class="hdr-btn-alt" id="switchUserBtn" type="button" onclick="switchUser()">换人</button>
         <button class="hdr-btn-alt hidden" id="leaveSessionBtn" type="button" onclick="leaveCurrentSession()">退出此表</button>
         <button class="hdr-btn-alt hidden" id="manageBtn" type="button" onclick="openManageSession()">管理表格</button>
         <button class="hdr-btn-alt hidden" id="deleteSessionBtn" type="button" onclick="deleteCurrentSession()">删除整表</button>
-        <button class="hdr-btn-share" type="button" onclick="openShare()">分享链接</button>
+        <button class="hdr-btn-share" id="shareBtn" type="button" onclick="openShare()">分享链接</button>
       </div>
     </div>
   </div>
@@ -270,42 +272,37 @@
     <div class="stats-strip" id="statsStrip"></div>
 
     <div class="toolbar">
-      <span class="toolbar-label">布局</span>
-      <button class="tb-btn active" id="btnTR" type="button" onclick="setLayout('tr')">时间为行</button>
-      <button class="tb-btn" id="btnPR" type="button" onclick="setLayout('pr')">人员为行</button>
-      <div class="tb-sep"></div>
       <button class="tb-btn" id="btnExpandOthers" type="button" onclick="expandOthers()">展开他人</button>
       <button class="tb-btn" id="btnCollapseOthers" type="button" onclick="collapseOthers()">折叠他人</button>
       <div class="tb-sep"></div>
       <button class="tb-btn" id="btnPrefs" type="button" onclick="openUserSettings()">用户设置</button>
       <button class="tb-btn tb-btn-ghost" id="btnAISummary" type="button" onclick="openAISummary()">AI 总结</button>
-      <div class="legend">
-        <span class="lg-item"><span class="lg-box empty"></span>未填</span>
-        <span class="lg-item"><span class="lg-box avail"></span>有空</span>
-        <span class="lg-item"><span class="lg-box busy">✕</span>没空</span>
-        <span class="lg-item"><span class="lg-box blocked"></span>不可填</span>
-      </div>
     </div>
-
-    <div class="tip hidden" id="tipBox"></div>
 
     <div id="mPromptCard" class="card prompt-card hidden">
       <div class="prompt-title">📌 发起人提示</div>
       <div class="prompt-body" id="mPromptText"></div>
     </div>
 
-    <div id="gridContent" class="grid-content"></div>
+    <div id="timelinePanel" class="timeline-panel"></div>
 
     <div id="remarkCard" class="card remark-card hidden">
-      <div class="card-ttl">个人备注</div>
+      <div class="card-ttl">整体说明 <span class="remark-visibility">适用于全部时间段，保存后组员可见</span></div>
       <div class="fg">
-        <label class="fl" for="myRemark">补充说明，例如只能线上参加、某天会晚到</label>
-        <textarea id="myRemark" class="fi remark-input" maxlength="200" placeholder="输入你的备注，AI 总结也会参考"></textarea>
+        <label class="fl" for="myRemark">补充适用于全部时间段的说明</label>
+        <textarea id="myRemark" class="fi remark-input" maxlength="200" placeholder="例如只能线上参加；AI 总结也会参考"></textarea>
+        <button class="btn-p remark-save-btn" id="saveRemarkBtn" type="button" onclick="saveRemark()">保存并公开</button>
         <div class="remark-meta">
-          <span id="remarkSaveHint">自动保存</span>
+          <span id="remarkSaveHint">尚未填写</span>
           <span id="remarkCount">0/200</span>
         </div>
       </div>
+    </div>
+
+    <div id="publicRemarksCard" class="card public-remarks-card hidden">
+      <div class="card-ttl">参与者整体说明</div>
+      <div class="public-remarks-help">说明对持分享链接的人可见，只有本人可以修改。</div>
+      <div id="publicRemarksList" class="public-remarks-list"></div>
     </div>
 
     <div class="pb"></div>
@@ -327,7 +324,7 @@
 <div class="ai-summary-overlay" id="aiSummaryOverlay" onclick="overlayBgAI(event)">
   <div class="ai-sheet">
     <div class="ai-bar"></div>
-    <div class="ai-title">AI 智能总结</div>
+    <div class="ai-title" id="aiSummaryTitle">AI 智能总结</div>
     <div class="ai-content" id="aiContent">
       <div class="ai-loading">生成中</div>
     </div>
@@ -355,14 +352,6 @@
     <div class="sh-bar"></div>
     <div class="sh-title">用户设置</div>
     <div class="settings-grid">
-      <div class="settings-block">
-        <div class="settings-title">默认布局</div>
-        <div class="settings-desc">进入表格后优先用哪个视角查看。</div>
-        <div class="settings-switch">
-          <button class="tb-btn" id="prefLayoutTR" type="button" onclick="setSettingsLayout('tr')">时间为行</button>
-          <button class="tb-btn" id="prefLayoutPR" type="button" onclick="setSettingsLayout('pr')">人员为行</button>
-        </div>
-      </div>
       <div class="settings-block">
         <div class="settings-title">默认展示</div>
         <div class="settings-desc">进入表格后是否先折叠其他参与者。</div>

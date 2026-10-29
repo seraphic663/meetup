@@ -11,23 +11,7 @@ ROOT_DIR = os.path.dirname(MODULE_DIR)
 DB_PATH = os.environ.get("DB_PATH", os.path.join(ROOT_DIR, "sessions", "sessions.db"))
 DB_USES_URI = DB_PATH.startswith("file:")
 KEEPALIVE_DB = None
-
-SESSION_COLUMNS = {
-    "id",
-    "schema_version",
-    "name",
-    "date_s",
-    "date_e",
-    "hour_s",
-    "hour_e",
-    "first_hour_s",
-    "last_hour_e",
-    "creator_name",
-    "creator_token_hash",
-    "creator_prompt",
-    "created_ts",
-    "updated_ts",
-}
+STORAGE_FORMAT_VERSION = 1
 
 
 def _prepare_connection(conn: sqlite3.Connection) -> sqlite3.Connection:
@@ -38,28 +22,6 @@ def _prepare_connection(conn: sqlite3.Connection) -> sqlite3.Connection:
 
 def get_db():
     return _prepare_connection(sqlite3.connect(DB_PATH, uri=DB_USES_URI))
-
-
-def _schema_uses_old_sessions(db: sqlite3.Connection) -> bool:
-    row = db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'"
-    ).fetchone()
-    if not row:
-        return False
-    columns = {item["name"] for item in db.execute("PRAGMA table_info(sessions)").fetchall()}
-    return not SESSION_COLUMNS.issubset(columns)
-
-
-def _drop_all_tables(db: sqlite3.Connection) -> None:
-    db.executescript(
-        """
-        DROP TABLE IF EXISTS availability;
-        DROP TABLE IF EXISTS participants;
-        DROP TABLE IF EXISTS session_required_names;
-        DROP TABLE IF EXISTS session_expected_names;
-        DROP TABLE IF EXISTS sessions;
-        """
-    )
 
 
 def _create_tables(db: sqlite3.Connection) -> None:
@@ -112,15 +74,19 @@ def _create_tables(db: sqlite3.Connection) -> None:
             FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
         );
 
-        CREATE TABLE IF NOT EXISTS availability (
+        CREATE TABLE IF NOT EXISTS time_intervals (
             session_id TEXT NOT NULL,
             participant_id TEXT NOT NULL,
+            id TEXT NOT NULL,
             slot_date TEXT NOT NULL,
-            slot_hour INTEGER NOT NULL,
-            state INTEGER NOT NULL,
-            PRIMARY KEY (participant_id, slot_date, slot_hour),
+            start_minute INTEGER NOT NULL,
+            end_minute INTEGER NOT NULL,
+            type TEXT NOT NULL CHECK (type IN ('busy', 'preferred')),
+            note TEXT NOT NULL DEFAULT '',
             FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
-            FOREIGN KEY (participant_id) REFERENCES participants(id) ON DELETE CASCADE
+            FOREIGN KEY (participant_id) REFERENCES participants(id) ON DELETE CASCADE,
+            PRIMARY KEY (participant_id, id),
+            CHECK (start_minute >= 0 AND end_minute <= 1440 AND start_minute < end_minute)
         );
 
         CREATE INDEX IF NOT EXISTS idx_expected_names_session
@@ -129,10 +95,28 @@ def _create_tables(db: sqlite3.Connection) -> None:
             ON session_required_names(session_id, position);
         CREATE INDEX IF NOT EXISTS idx_participants_session
             ON participants(session_id);
-        CREATE INDEX IF NOT EXISTS idx_availability_session
-            ON availability(session_id, participant_id);
+        CREATE INDEX IF NOT EXISTS idx_time_intervals_session
+            ON time_intervals(session_id, participant_id, slot_date, start_minute);
         """
     )
+
+
+def _migrate_reset_old_scheduling_data(db: sqlite3.Connection) -> None:
+    """Reset old schedule data once before the interval model becomes authoritative."""
+    version = int(db.execute("PRAGMA user_version").fetchone()[0])
+    if version >= STORAGE_FORMAT_VERSION:
+        return
+
+    for table in (
+        "time_intervals",
+        "availability",
+        "participants",
+        "session_required_names",
+        "session_expected_names",
+        "sessions",
+    ):
+        db.execute(f"DROP TABLE IF EXISTS {table}")
+    db.execute(f"PRAGMA user_version = {STORAGE_FORMAT_VERSION}")
 
 
 def init_db():
@@ -146,8 +130,7 @@ def init_db():
         os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
         db = get_db()
 
-    if _schema_uses_old_sessions(db):
-        _drop_all_tables(db)
+    _migrate_reset_old_scheduling_data(db)
     _create_tables(db)
     db.commit()
 
@@ -180,20 +163,27 @@ def load_session(sid: str):
             """,
             (sid,),
         ).fetchall()
-        availability_rows = db.execute(
+        interval_rows = db.execute(
             """
-            SELECT participant_id, slot_date, slot_hour, state
-            FROM availability
+            SELECT id, participant_id, slot_date, start_minute, end_minute, type, note
+            FROM time_intervals
             WHERE session_id=?
-            ORDER BY participant_id ASC, slot_date ASC, slot_hour ASC
+            ORDER BY participant_id ASC, slot_date ASC, start_minute ASC, end_minute ASC
             """,
             (sid,),
         ).fetchall()
-        availability_by_participant = {}
-        for row in availability_rows:
-            participant_avail = availability_by_participant.setdefault(row["participant_id"], {})
-            day_payload = participant_avail.setdefault(row["slot_date"], {})
-            day_payload[str(row["slot_hour"])] = int(row["state"])
+        intervals_by_participant = {}
+        for row in interval_rows:
+            intervals_by_participant.setdefault(row["participant_id"], []).append(
+                {
+                    "id": row["id"],
+                    "date": row["slot_date"],
+                    "startMinute": int(row["start_minute"]),
+                    "endMinute": int(row["end_minute"]),
+                    "type": row["type"],
+                    "note": row["note"] or "",
+                }
+            )
 
         participants = []
         joined_required_names = []
@@ -202,7 +192,7 @@ def load_session(sid: str):
                 "id": row["id"],
                 "name": row["name"],
                 "color": row["color"],
-                "avail": availability_by_participant.get(row["id"], {}),
+                "intervals": intervals_by_participant.get(row["id"], []),
                 "remark": row["remark"] or "",
                 "isRequired": bool(row["is_required"]),
             }
@@ -322,11 +312,11 @@ def save_session(sid: str, payload: dict) -> None:
             ],
         )
 
-        db.execute("DELETE FROM participants WHERE session_id=?", (sid,))
         participant_rows = []
-        availability_rows = []
+        participant_ids = set()
         for participant in payload.get("participants", []):
             participant_id = participant.get("id", "")
+            participant_ids.add(participant_id)
             participant_created_ts = existing_participants.get(participant_id, now)
             participant_rows.append(
                 (
@@ -341,41 +331,82 @@ def save_session(sid: str, payload: dict) -> None:
                     now,
                 )
             )
-            for slot_date, hours in (participant.get("avail") or {}).items():
-                if not isinstance(hours, dict):
-                    continue
-                for slot_hour, state in hours.items():
-                    availability_rows.append(
-                        (
-                            sid,
-                            participant_id,
-                            str(slot_date),
-                            int(slot_hour),
-                            int(state),
-                        )
-                    )
+        removed_ids = set(existing_participants) - participant_ids
+        if removed_ids:
+            db.executemany("DELETE FROM participants WHERE id=? AND session_id=?", [(pid, sid) for pid in removed_ids])
 
         if participant_rows:
-            db.executemany(
+            db.execute(
+                "UPDATE participants SET name='__sync__' || id WHERE session_id=?",
+                (sid,),
+            )
+
+        for row in participant_rows:
+            db.execute(
                 """
                 INSERT INTO participants(
                     id, session_id, name, color, remark, is_required,
                     token_hash, created_ts, updated_ts
                 ) VALUES(?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(id) DO UPDATE SET
+                    session_id=excluded.session_id,
+                    name=excluded.name,
+                    color=excluded.color,
+                    remark=excluded.remark,
+                    is_required=excluded.is_required,
+                    token_hash=excluded.token_hash,
+                    updated_ts=excluded.updated_ts
                 """,
-                participant_rows,
+                row,
             )
+        db.commit()
 
-        if availability_rows:
+
+def replace_participant_intervals(sid: str, participant_id: str, intervals: list[dict]) -> None:
+    with get_db() as db:
+        db.execute("DELETE FROM time_intervals WHERE session_id=? AND participant_id=?", (sid, participant_id))
+        if intervals:
             db.executemany(
                 """
-                INSERT INTO availability(
-                    session_id, participant_id, slot_date, slot_hour, state
-                ) VALUES(?,?,?,?,?)
+                INSERT INTO time_intervals(
+                    session_id, participant_id, id, slot_date, start_minute, end_minute, type, note
+                ) VALUES(?,?,?,?,?,?,?,?)
                 """,
-                availability_rows,
+                [
+                    (
+                        sid, participant_id, item["id"], item["date"], item["startMinute"],
+                        item["endMinute"], item["type"], item.get("note", ""),
+                    )
+                    for item in intervals
+                ],
             )
+        db.commit()
 
+
+def prune_intervals_to_session_windows(sid: str, windows: dict[str, tuple[int, int]]) -> None:
+    with get_db() as db:
+        if windows:
+            placeholders = ",".join("?" for _ in windows)
+            db.execute(
+                f"DELETE FROM time_intervals WHERE session_id=? AND slot_date NOT IN ({placeholders})",
+                (sid, *windows.keys()),
+            )
+            db.executemany(
+                """DELETE FROM time_intervals
+                   WHERE session_id=? AND slot_date=? AND (start_minute<? OR end_minute>?)""",
+                [(sid, date, start, end) for date, (start, end) in windows.items()],
+            )
+        else:
+            db.execute("DELETE FROM time_intervals WHERE session_id=?", (sid,))
+        db.commit()
+
+
+def update_participant_remark(sid: str, participant_id: str, remark: str) -> None:
+    with get_db() as db:
+        db.execute(
+            "UPDATE participants SET remark=?, updated_ts=? WHERE session_id=? AND id=?",
+            (remark, int(time.time()), sid, participant_id),
+        )
         db.commit()
 
 

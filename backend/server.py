@@ -36,10 +36,11 @@ SESSION_NAME_MAX = 20
 PERSON_NAME_MAX = 10
 PROMPT_MAX = 200
 REMARK_MAX = 200
+INTERVAL_NOTE_MAX = 200
+MAX_INTERVALS_PER_PARTICIPANT = 500
 EXPECTED_NAMES_MAX = 12
 MAX_PARTICIPANTS = 24
 MAX_RANGE_DAYS = 14
-VALID_STATES = {0, 1, 2}
 COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 SCHEMA_VERSION = 4
 
@@ -229,7 +230,10 @@ def _normalize_participants(session_data: dict, raw_participants, existing_by_id
             "id": participant_id,
             "name": name,
             "color": _safe_color(raw.get("color"), fallback_color),
-            "avail": _normalize_avail(session_data, raw.get("avail") if "avail" in raw else (existing or {}).get("avail", {})),
+            "intervals": _normalize_intervals(
+                session_data,
+                raw.get("intervals") if "intervals" in raw else (existing or {}).get("intervals", []),
+            ),
             "remark": _clean_text(raw.get("remark") if "remark" in raw else (existing or {}).get("remark"), REMARK_MAX),
             "isRequired": _parse_bool(raw.get("isRequired") if "isRequired" in raw else (existing or {}).get("isRequired"), False),
         }
@@ -368,48 +372,107 @@ def _normalize_time_window(date_s, date_e, hour_s, hour_e, first_hour_s, last_ho
     return hour_s, hour_e, first_hour_s, last_hour_e
 
 
-def _slot_enabled(session_data: dict, session_date: str, hour: int) -> bool:
-    hour = _parse_int(hour, -1)
+def _time_bounds(session_data: dict, session_date: str):
     hour_s = _parse_int(session_data.get("hourS", 9), 9)
     hour_e = _parse_int(session_data.get("hourE", 21), 21)
-    first_hour_s = _parse_int(session_data.get("firstHourS", hour_s), hour_s)
-    last_hour_e = _parse_int(session_data.get("lastHourE", hour_e), hour_e)
-    start_date = session_data.get("dateS")
-    end_date = session_data.get("dateE")
-
-    if start_date == end_date == session_date:
-        return first_hour_s <= hour < last_hour_e
-    if session_date == start_date:
-        return first_hour_s <= hour < hour_e
-    if session_date == end_date:
-        return hour_s <= hour < last_hour_e
-    return hour_s <= hour < hour_e
+    start = hour_s * 60
+    end = hour_e * 60
+    if session_date == session_data.get("dateS"):
+        start = _parse_int(session_data.get("firstHourS", hour_s), hour_s) * 60
+    if session_date == session_data.get("dateE"):
+        end = _parse_int(session_data.get("lastHourE", hour_e), hour_e) * 60
+    return start, end
 
 
-def _normalize_avail(session_data: dict, raw_avail):
-    if not isinstance(raw_avail, dict):
-        return {}
-
+def _normalize_intervals(session_data: dict, raw_intervals):
+    if not isinstance(raw_intervals, list):
+        return []
     valid_dates = set(_iter_dates(session_data))
-    normalized = {}
-
-    for raw_date, raw_hours in raw_avail.items():
-        session_date = str(raw_date)
-        if session_date not in valid_dates or not isinstance(raw_hours, dict):
+    intervals = []
+    for raw in raw_intervals[:MAX_INTERVALS_PER_PARTICIPANT]:
+        if not isinstance(raw, dict):
             continue
-        day_payload = {}
-        for raw_hour, raw_state in raw_hours.items():
-            hour = _parse_int(raw_hour, -1)
-            try:
-                state = int(raw_state)
-            except (TypeError, ValueError):
-                continue
-            if not _slot_enabled(session_data, session_date, hour) or state not in VALID_STATES or state == 0:
-                continue
-            day_payload[str(hour)] = state
-        if day_payload:
-            normalized[session_date] = day_payload
-    return normalized
+        session_date = str(raw.get("date") or "")
+        kind = str(raw.get("type") or "")
+        start = _parse_int(raw.get("startMinute"), -1)
+        end = _parse_int(raw.get("endMinute"), -1)
+        if session_date not in valid_dates or kind not in {"busy", "preferred"}:
+            continue
+        bounds = _time_bounds(session_data, session_date)
+        if start < bounds[0] or end > bounds[1] or start >= end:
+            continue
+        intervals.append(
+            {
+                "id": _clean_text(raw.get("id"), 64) or secrets.token_hex(12),
+                "date": session_date,
+                "startMinute": start,
+                "endMinute": end,
+                "type": kind,
+                "note": _clean_text(raw.get("note"), INTERVAL_NOTE_MAX),
+            }
+        )
+    return sorted(intervals, key=lambda item: (item["date"], item["startMinute"], item["endMinute"]))
+
+
+def _validate_interval_payload(session_data: dict, raw_intervals):
+    if not isinstance(raw_intervals, list):
+        return None, ["intervals 必须是数组"]
+    if len(raw_intervals) > MAX_INTERVALS_PER_PARTICIPANT:
+        return None, [f"每人最多保存 {MAX_INTERVALS_PER_PARTICIPANT} 段时间"]
+    valid_dates = set(_iter_dates(session_data))
+    intervals = []
+    errors = []
+    seen_ids = set()
+    for index, raw in enumerate(raw_intervals):
+        if not isinstance(raw, dict):
+            errors.append(f"第 {index + 1} 段格式不正确")
+            continue
+        session_date = str(raw.get("date") or "")
+        if session_date not in valid_dates:
+            errors.append(f"第 {index + 1} 段日期不在活动范围内")
+            continue
+        start_raw = raw.get("startMinute")
+        end_raw = raw.get("endMinute")
+        if any(isinstance(value, (bool, float)) for value in (start_raw, end_raw)):
+            errors.append(f"第 {index + 1} 段时间格式不正确")
+            continue
+        try:
+            start = int(start_raw)
+            end = int(end_raw)
+        except (TypeError, ValueError):
+            errors.append(f"第 {index + 1} 段时间格式不正确")
+            continue
+        bounds = _time_bounds(session_data, session_date)
+        if start < bounds[0] or end > bounds[1] or start >= end:
+            errors.append(f"第 {index + 1} 段时间超出当天活动范围")
+            continue
+        kind = str(raw.get("type") or "")
+        if kind not in {"busy", "preferred"}:
+            errors.append(f"第 {index + 1} 段类型不正确")
+            continue
+        interval_id = _clean_text(raw.get("id"), 64) or secrets.token_hex(12)
+        if interval_id in seen_ids:
+            errors.append(f"第 {index + 1} 段 ID 重复")
+            continue
+        seen_ids.add(interval_id)
+        intervals.append(
+            {
+                "id": interval_id,
+                "date": session_date,
+                "startMinute": start,
+                "endMinute": end,
+                "type": kind,
+                "note": _clean_text(raw.get("note"), INTERVAL_NOTE_MAX),
+            }
+        )
+    intervals.sort(key=lambda item: (item["date"], item["startMinute"], item["endMinute"]))
+    previous = None
+    for item in intervals:
+        if previous and previous["date"] == item["date"] and item["startMinute"] < previous["endMinute"]:
+            errors.append(f"{item['date']} 的时间条不能互相重叠")
+            break
+        previous = item
+    return (None, errors) if errors else (intervals, [])
 
 
 def _viewer_context(session_data: dict):
@@ -455,7 +518,7 @@ def _public_session(session_data: dict):
                 "id": participant.get("id"),
                 "name": participant.get("name"),
                 "color": participant.get("color"),
-                "avail": participant.get("avail", {}),
+                "intervals": participant.get("intervals", []),
                 "remark": participant.get("remark", ""),
                 "isRequired": bool(participant.get("isRequired")),
             }
@@ -471,7 +534,7 @@ def _public_session(session_data: dict):
             "canDeleteSession": viewer["is_creator"],
             "canManageParticipants": viewer["is_creator"],
             "canLeaveSession": bool(viewer["participant"]),
-            "canEditOwnAvailability": bool(viewer["participant"]),
+            "canEditOwnIntervals": bool(viewer["participant"]),
         },
     }
 
@@ -490,134 +553,148 @@ def _participant_for_write(session_data: dict):
     return None
 
 
-def _participant_has_input(participant: dict) -> bool:
-    return bool(participant.get("avail") or (participant.get("remark") or "").strip())
-
-
 def _required_participants(participants):
     return [participant for participant in participants if participant.get("isRequired")]
 
 
-def _slot_stats(session_data: dict):
+def _minute_label(value: int) -> str:
+    return f"{value // 60:02d}:{value % 60:02d}"
+
+
+def _interval_label(item: dict) -> str:
+    start = item.get("start", item.get("startMinute", 0))
+    end = item.get("end", item.get("endMinute", 0))
+    return f"{item['date'][5:]} {_minute_label(start)}-{_minute_label(end)}"
+
+
+def _interval_summary_segments(session_data: dict):
     participants = session_data.get("participants", [])
-    required_names = {participant.get("name", "未知") for participant in _required_participants(participants)}
-    stats = []
+    required_names = {person.get("name", "未知") for person in _required_participants(participants)}
+    result = []
     for session_date in _iter_dates(session_data):
-        for hour in range(int(session_data.get("hourS", 9)), int(session_data.get("hourE", 21))):
-            if not _slot_enabled(session_data, session_date, hour):
-                continue
-            available = []
+        window_start, window_end = _time_bounds(session_data, session_date)
+        boundaries = {window_start, window_end}
+        participant_intervals = []
+        for participant in participants:
+            intervals = []
+            for interval in participant.get("intervals", []):
+                if interval.get("date") != session_date:
+                    continue
+                start = max(window_start, _parse_int(interval.get("startMinute"), window_start))
+                end = min(window_end, _parse_int(interval.get("endMinute"), window_end))
+                if start >= end or interval.get("type") not in {"busy", "preferred"}:
+                    continue
+                boundaries.update((start, end))
+                intervals.append({"start": start, "end": end, "type": interval["type"]})
+            participant_intervals.append((participant, intervals))
+
+        points = sorted(boundaries)
+        for index in range(len(points) - 1):
+            start, end = points[index], points[index + 1]
             busy = []
-            unknown = []
-            for participant in participants:
-                day_avail = participant.get("avail", {}).get(session_date, {})
-                state = int(day_avail.get(str(hour), 0)) if isinstance(day_avail, dict) else 0
-                if state == 1:
-                    available.append(participant.get("name", "未知"))
-                elif state == 2:
+            preferred = []
+            for participant, intervals in participant_intervals:
+                if any(item["start"] <= start and item["end"] >= end and item["type"] == "busy" for item in intervals):
                     busy.append(participant.get("name", "未知"))
-                else:
-                    unknown.append(participant.get("name", "未知"))
-            stats.append(
-                {
-                    "date": session_date,
-                    "hour": hour,
-                    "available": available,
-                    "busy": busy,
-                    "unknown": unknown,
-                    "avail_count": len(available),
-                    "busy_count": len(busy),
-                    "unknown_count": len(unknown),
-                    "required_available": [name for name in available if name in required_names],
-                    "required_busy": [name for name in busy if name in required_names],
-                    "required_unknown": [name for name in unknown if name in required_names],
-                }
+                if any(item["start"] <= start and item["end"] >= end and item["type"] == "preferred" for item in intervals):
+                    preferred.append(participant.get("name", "未知"))
+            if not busy and not preferred:
+                continue
+            required_preferred = [name for name in preferred if name in required_names]
+            required_busy = [name for name in busy if name in required_names]
+            item = {
+                "date": session_date,
+                "start": start,
+                "end": end,
+                "busy": busy,
+                "preferred": preferred,
+                "busy_count": len(busy),
+                "preferred_count": len(preferred),
+                "required_preferred": required_preferred,
+                "required_preferred_count": len(required_preferred),
+                "required_busy": required_busy,
+            }
+            previous = result[-1] if result else None
+            same_members = previous and (
+                previous["date"] == session_date
+                and previous["end"] == start
+                and previous["busy"] == busy
+                and previous["preferred"] == preferred
             )
-    return stats
-
-
-def _slot_label(slot: dict) -> str:
-    return f"{slot['date'][5:]} {slot['hour']:02d}:00-{slot['hour'] + 1:02d}:00"
-
-
-def _slot_rank_key(slot: dict):
-    required_conflict = 1 if slot["required_busy"] else 0
-    return (
-        required_conflict,
-        -len(slot["required_available"]),
-        -slot["avail_count"],
-        len(slot["required_unknown"]),
-        slot["busy_count"],
-        slot["unknown_count"],
-        slot["date"],
-        slot["hour"],
-    )
+            if same_members:
+                previous["end"] = end
+            else:
+                result.append(item)
+    return result
 
 
 def _build_local_summary(session_data: dict) -> str:
     participants = session_data.get("participants", [])
+    interval_segments = _interval_summary_segments(session_data)
     participant_total = len(participants)
     required_people = _required_participants(participants)
     required_total = len(required_people)
-    slots = _slot_stats(session_data)
-    ranked_slots = sorted(slots, key=_slot_rank_key)
-    top_slots = [slot for slot in ranked_slots if slot["avail_count"] > 0][:3]
-    pending_names = [participant.get("name", "未知") for participant in participants if not _participant_has_input(participant)]
+    recommended = sorted(
+        [item for item in interval_segments if item["busy_count"] == 0 and item["preferred_count"] > 0],
+        key=lambda item: (-item["required_preferred_count"], -item["preferred_count"], -(item["end"] - item["start"]), item["date"], item["start"]),
+    )[:3]
+    busy_segments = [item for item in interval_segments if item["busy_count"] > 0]
+    pending_names = [participant.get("name", "未知") for participant in participants if not participant.get("intervals")]
     remarks = [(participant.get("name", "未知"), _clean_text(participant.get("remark"), REMARK_MAX)) for participant in participants if (participant.get("remark") or "").strip()]
 
     lines = ["## 推荐时段"]
-    if top_slots:
-        for slot in top_slots:
-            parts = [f"{slot['avail_count']}/{participant_total} 人有空"]
-            if required_total:
-                if slot["required_busy"]:
-                    parts.append(f"关键成员冲突：{', '.join(slot['required_busy'])}")
-                elif slot["required_available"]:
-                    parts.append(f"关键成员 {len(slot['required_available'])}/{required_total} 人有空")
-                elif slot["required_unknown"]:
-                    parts.append(f"关键成员待确认 {len(slot['required_unknown'])} 人")
-            if slot["busy_count"]:
-                parts.append(f"{slot['busy_count']} 人明确没空")
-            if slot["unknown_count"]:
-                parts.append(f"{slot['unknown_count']} 人尚未填写")
-            lines.append(f"- {_slot_label(slot)}：{'，'.join(parts)}")
+    if recommended:
+        for item in recommended:
+            pref_names = "、".join(item["preferred"])
+            lines.append(
+                f"- {_interval_label(item)}：{item['preferred_count']}/{participant_total} 人偏好，"
+                f"不方便 {item['busy_count']} 人；偏好成员：{pref_names}。"
+            )
     else:
-        lines.append("- 目前还没有明确的可用时段，建议先提醒大家填写。")
+        lines.append("- 目前还没有同时避开不方便区间且存在明确偏好的时段。")
 
     lines.append("")
     lines.append("## 协调建议")
-    if top_slots:
-        best = top_slots[0]
-        if required_total and not best["required_busy"]:
-            lines.append(f"- 优先从 {_slot_label(best)} 开始沟通，这个时段没有关键成员明确冲突。")
-        else:
-            lines.append(f"- 优先从 {_slot_label(best)} 开始沟通，这个时段当前重合度最高。")
-        if required_total and best["required_available"]:
-            lines.append(f"- 关键成员里当前有空的是 {', '.join(best['required_available'])}。")
-        if required_total and best["required_busy"]:
-            lines.append(f"- 但这个时段与关键成员 {', '.join(best['required_busy'])} 冲突，除非接受缺席，否则不建议优先敲定。")
-        if best["busy"]:
-            lines.append(f"- 这个时段和 {', '.join(best['busy'])} 有冲突，如需全员参与可继续看备选时段。")
-        if pending_names:
-            lines.append(f"- 还有 {', '.join(pending_names)} 未完成填写，最终敲定前建议先补齐信息。")
+    if recommended:
+        best = recommended[0]
+        lines.append(f"- 可优先沟通 {_interval_label(best)}，有 {best['preferred_count']}/{participant_total} 人明确偏好，且没有人标记不方便。")
     else:
-        lines.append("- 大家还没有形成明显重合，建议缩小日期范围或先明确优先级。")
+        lines.append("- 暂无无冲突的明确偏好重叠区间，可协商调整已有区间或补充填写。")
+    if busy_segments:
+        conflicts = "; ".join(
+            f"{_interval_label(item)}（{', '.join(item['busy'])}）"
+            for item in sorted(busy_segments, key=lambda item: (item["date"], item["start"]))[:3]
+        )
+        lines.append(f"- 明确不方便区间：{conflicts}。")
+    if pending_names:
+        lines.append(f"- 尚未填写时间条：{'、'.join(pending_names)}。")
 
     if required_total:
         lines.append("")
         lines.append("## 关键成员约束")
         lines.append(f"- 当前共标记 {required_total} 位关键成员：{', '.join(participant.get('name', '未知') for participant in required_people)}。")
-        clean_slots = [slot for slot in ranked_slots if not slot["required_busy"] and slot["avail_count"] > 0]
-        if clean_slots:
-            lines.append(f"- 首选优先看没有关键成员明确没空的时段，例如 {_slot_label(clean_slots[0])}。")
+        clean_intervals = [item for item in recommended if not item["required_busy"]]
+        if clean_intervals:
+            lines.append(f"- 没有关键成员标记不方便的偏好区间，例如 {_interval_label(clean_intervals[0])}。")
         else:
-            lines.append("- 当前所有已有重合的时段都与至少一位关键成员冲突，需要协调取舍。")
+            lines.append("- 当前尚无避开关键成员不方便区间的明确偏好时段。")
 
     if remarks:
         lines.append("")
-        lines.append("## 参与者备注")
+        lines.append("## 参与者整体说明")
         for name, note in remarks:
             lines.append(f"- {name}：{note}")
+
+    interval_notes = [
+        (participant.get("name", "未知"), interval)
+        for participant in participants
+        for interval in participant.get("intervals", [])
+        if interval.get("note")
+    ]
+    if interval_notes:
+        lines.extend(["", "## 时间条备注"])
+        for name, interval in interval_notes[:20]:
+            lines.append(f"- {name} · {_interval_label(interval)}：{interval['note']}")
 
     if participants:
         lines.append("")
@@ -627,19 +704,21 @@ def _build_local_summary(session_data: dict) -> str:
 
 
 def _build_ai_prompt(session_data: dict, fallback_summary: str) -> str:
-    slots = _slot_stats(session_data)
+    intervals = _interval_summary_segments(session_data)
     required_people = _required_participants(session_data.get("participants", []))
+    participant_count = len(session_data.get("participants", []))
     highlights = sorted(
-        [slot for slot in slots if slot["avail_count"] > 0],
-        key=_slot_rank_key,
+        [item for item in intervals if item["busy_count"] == 0 and item["preferred_count"] > 0],
+        key=lambda item: (-item["required_preferred_count"], -item["preferred_count"], -(item["end"] - item["start"]), item["date"], item["start"]),
     )[:5]
     highlight_lines = [
-        f"- {_slot_label(slot)}：有空 {slot['avail_count']} 人，没空 {slot['busy_count']} 人，未填 {slot['unknown_count']} 人"
+        f"- {_interval_label(item)}：偏好 {item['preferred_count']}/{participant_count} 人，"
+        f"不方便 {item['busy_count']} 人，偏好成员 {', '.join(item['preferred'])}"
         + (
-            f"，关键成员有空 {len(slot['required_available'])} 人，关键冲突 {', '.join(slot['required_busy'])}"
+            f"；关键成员偏好 {len(item['required_preferred'])} 人，关键成员不方便 {', '.join(item['required_busy'])}"
             if required_people else ""
         )
-        for slot in highlights
+        for item in highlights
     ] or ["- 暂无有效高亮时段"]
     time_label = f"{session_data.get('hourS', 9)}:00 - {session_data.get('hourE', 21)}:00"
     first_hour_s = session_data.get("firstHourS", session_data.get("hourS", 9))
@@ -651,25 +730,26 @@ def _build_ai_prompt(session_data: dict, fallback_summary: str) -> str:
         )
 
     return (
-        "请基于以下时间调查信息，用简洁中文输出 markdown 总结。\n\n"
+        "请只依据参与者明确保存的时间区间进行总结，用简洁中文输出 markdown。\n\n"
         f"活动名称：{session_data.get('name', '时间调查')}\n"
         f"日期范围：{session_data.get('dateS', '')} 至 {session_data.get('dateE', '')}\n"
         f"时间范围：{time_label}\n"
         f"发起人提示：{session_data.get('creatorPrompt', '') or '无'}\n\n"
+        f"参与人数：{participant_count}\n"
         f"关键成员：{', '.join(participant.get('name', '未知') for participant in required_people) or '无'}\n"
-        "排序规则：关键成员明确没空时，该时段基本否决；关键成员有空时优先；关键成员未填写不直接否决。\n\n"
+        "红色不方便区间表示明确冲突并集；绿色偏好以明确标记偏好的人数统计。没有区间记录不等于有空。\n\n"
         "本地预分析：\n"
         f"{fallback_summary}\n\n"
         "高亮时段：\n"
         f"{'\n'.join(highlight_lines)}\n\n"
         "请按以下结构回答：\n"
         "## 推荐时段\n"
-        "- 优先考虑没有关键成员明确没空的时段，并说明关键成员覆盖情况\n"
+        "- 优先考虑没有人标记不方便、且明确偏好人数较多的连续区间\n"
         "## 协调建议\n"
         "- 给出备选与沟通建议，若关键成员冲突请明确指出\n"
         "## 关键成员约束\n"
-        "- 概括关键成员是否被满足、哪些时段待确认\n"
-        "## 参与者备注\n"
+        "- 概括关键成员的偏好与不方便区间\n"
+        "## 参与者整体说明\n"
         "- 只在确实有备注或限制时输出\n"
     )
 
@@ -687,6 +767,7 @@ def _deepseek_chat(user_prompt: str, *, temperature: float, max_tokens: int):
         json={
             "model": DEEPSEEK_MODEL,
             "messages": [{"role": "user", "content": user_prompt}],
+            "thinking": {"type": "disabled"},
             "temperature": temperature,
             "max_tokens": max_tokens,
         },
@@ -912,7 +993,7 @@ def join(sid):
                 "id": _new_participant_id(),
                 "name": name,
                 "color": _safe_color(body.get("color")),
-                "avail": {},
+                "intervals": [],
                 "remark": "",
                 "isRequired": name in set(session_data.get("requiredNames", [])),
                 "tokenHash": _hash_token(participant_token),
@@ -943,7 +1024,7 @@ def join(sid):
     public_session["viewer"]["participantId"] = existing.get("id")
     public_session["viewer"]["participantName"] = existing.get("name")
     public_session["capabilities"]["canLeaveSession"] = True
-    public_session["capabilities"]["canEditOwnAvailability"] = True
+    public_session["capabilities"]["canEditOwnIntervals"] = True
 
     return jsonify(
         {
@@ -955,8 +1036,44 @@ def join(sid):
     )
 
 
-@app.route("/api/session/<sid>/avail", methods=["PUT"])
-def avail(sid):
+@app.route("/api/session/<sid>/intervals", methods=["GET", "PUT"])
+def participant_intervals(sid):
+    session_data = _load(sid)
+    if not session_data:
+        return _api_error("not_found", 404, "会话不存在")
+
+    participant = _participant_for_write(session_data)
+    if participant is None:
+        return _api_error("participant_auth_required", 403, "需要参与者令牌才能读取或保存自己的时间条")
+
+    if request.method == "GET":
+        return jsonify({"participantId": participant.get("id"), "intervals": participant.get("intervals", [])})
+
+    try:
+        body = _json_body()
+    except ValueError as exc:
+        return _api_error("invalid_json", 400, str(exc))
+    if not isinstance(body, dict):
+        return _api_error("invalid_payload", 400, "请求体必须是 JSON 对象")
+    intervals, errors = _validate_interval_payload(session_data, body.get("intervals"))
+    if errors:
+        return _api_error("invalid_payload", 400, "时间条数据不合法", errors)
+
+    storage.replace_participant_intervals(session_data["id"], participant["id"], intervals)
+    participant["intervals"] = intervals
+    _log_event(
+        "info",
+        "participant_intervals_saved",
+        request_id=_request_id(),
+        session_id=session_data["id"],
+        participant=participant.get("name"),
+        interval_count=len(intervals),
+    )
+    return jsonify({"ok": True, "participantId": participant.get("id"), "intervals": intervals})
+
+
+@app.route("/api/session/<sid>/remark", methods=["PUT"])
+def participant_remark(sid):
     session_data = _load(sid)
     if not session_data:
         return _api_error("not_found", 404, "会话不存在")
@@ -965,24 +1082,25 @@ def avail(sid):
         body = _json_body()
     except ValueError as exc:
         return _api_error("invalid_json", 400, str(exc))
+    if not isinstance(body, dict):
+        return _api_error("invalid_payload", 400, "请求体必须是 JSON 对象")
+
     participant = _participant_for_write(session_data)
     if participant is None:
-        return _api_error("participant_auth_required", 403, "需要先以参与者身份进入后才能填写")
+        return _api_error("participant_auth_required", 403, "需要参与者令牌才能修改整体说明")
 
-    participant["avail"] = _normalize_avail(session_data, body.get("avail", {}))
-    if "remark" in body:
-        participant["remark"] = _clean_text(body.get("remark"), REMARK_MAX)
-    _save(sid, session_data)
+    remark = _clean_text(body.get("remark"), REMARK_MAX)
+    storage.update_participant_remark(session_data["id"], participant["id"], remark)
+    participant["remark"] = remark
     _log_event(
         "info",
-        "availability_saved",
+        "participant_remark_saved",
         request_id=_request_id(),
-        session_id=sid,
+        session_id=session_data["id"],
         participant=participant.get("name"),
-        date_count=len(participant["avail"]),
-        remark_len=len(participant.get("remark", "")),
+        remark_len=len(remark),
     )
-    return jsonify({"ok": True, "participantId": participant.get("id")})
+    return jsonify({"ok": True, "participantId": participant.get("id"), "remark": remark})
 
 
 @app.route("/api/session/<sid>", methods=["PATCH"])
@@ -1041,6 +1159,11 @@ def update_session(sid):
     )
     session_data["schemaVersion"] = SCHEMA_VERSION
     _save(sid, session_data)
+    interval_windows = {
+        session_date: _time_bounds(session_data, session_date)
+        for session_date in _iter_dates(session_data)
+    }
+    storage.prune_intervals_to_session_windows(sid, interval_windows)
     _log_event(
         "info",
         "session_updated",

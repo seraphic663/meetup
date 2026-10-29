@@ -1,5 +1,6 @@
 sessions.db
 sessions/
+.venv/
 backups/
 cloudflared.exe
 __pycache__/

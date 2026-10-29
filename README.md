@@ -1,6 +1,6 @@
 # 群约小助手
 
-多人时间协调工具。创建一张时间表，参与者各自填写有空 / 没空，一眼看出最优时段。
+多人时间协调工具。参与者用连续时间条标记不方便和偏好时段，汇总结果直接对齐时间轴。
 
 版本演进记录见 [docs/更新日志.md](docs/更新日志.md)。以后每次 GitHub 更新都需要同步维护这份文档。
 
@@ -15,12 +15,17 @@
 - 创建后自动把发起人加入表格并进入填写页
 - 发起人可设置提示语，所有参与者可见
 - 支持首尾截断时间，跨天活动可设置首日开始和末日结束
-- 参与者点格子填写可用时间（有空 / 没空 / 未填）
+- 参与者可拖动创建、移动和调整时间条，并为每段时间添加一条备注
+- 时间粒度可设置为 5、10、15、20、30 或 60 分钟；普通参与者切换时保留已有时间，发起人可选择舍入
+- 横向与竖向时间轴可切换，支持展开或折叠其他参与者
+- 汇总按连续时间段展示：红带覆盖明确标记的不方便时间并集，绿带深浅表示明确偏好人数比例
 - 创建者可修改整张表并维护参与者名单
 - 创建者可标记关键成员，汇总和 AI 推荐会优先考虑关键成员约束
 - 参与者可退出自己加入过的表格
 - 热力图叠加，直观显示时段重合度
 - AI 智能总结（优先 DeepSeek，未配置时自动降级为本地总结）
+- 快速预览提供一张示例表，展示正式填写、汇总和横竖布局
+- 参与者可保存适用于全部时间段的整体说明，其他持分享链接的人可查看
 - 历史栏常驻展示：支持最近 5 条 localStorage 历史，也可粘贴旧分享链接或表格 ID 恢复打开旧表
 - 使用教程引导
 - 用户偏好（默认布局、默认折叠状态）
@@ -68,7 +73,7 @@ python run.py
    - `DEEPSEEK_MODEL` = `deepseek-v4-flash`（可选，默认已是这个值）
 3. Railway 自动部署，用 `Procfile` 里的 gunicorn 命令启动；如果 Railway 服务里仍保留旧 Start Command `gunicorn server:app ...`，根目录 `server.py` 会兼容转发到 `backend.server:app`
 
-数据存储在 SQLite（默认 `sessions/sessions.db`），当前已拆为多张业务表（`sessions / session_expected_names / session_required_names / participants / availability`）。Railway 重启后数据会丢失，如需持久化需挂载 Volume 并设置 `DB_PATH` 环境变量。
+数据存储在 SQLite（本地默认 `sessions/sessions.db`），当前表为 `sessions / session_expected_names / session_required_names / participants / time_intervals`。本次首次启动会清除旧排期数据并创建区间存储；参与者重新加入后，时间条保存在数据库中。Railway production 的 `web` 服务已将 `web-volume` 挂载到 `/app/sessions`，与后端默认数据库路径 `/app/sessions/sessions.db` 对齐，因此无需设置 `DB_PATH`。Volume 可让数据库跨 Railway 发布和重启保留；它不替代独立备份，备份与恢复步骤见 [docs/backup_restore.md](docs/backup_restore.md)。
 
 ---
 
@@ -137,7 +142,8 @@ python -m unittest tests/test_api_smoke.py -v
    - 创建会话
    - AI 起草草稿并人工确认创建（可在无 API Key 时验证保留默认值的本地回退）
    - 加入会话
-   - 填写可用性 + 备注
+   - 填写可用性，输入个人备注后点击“保存并公开”
+   - 确认已公开备注能被其他访问者看到，且备注本人可以修改
    - 创建者管理参与者与关键成员
    - 查看总结（含 AI / 无 AI 两种情况至少其一）
 

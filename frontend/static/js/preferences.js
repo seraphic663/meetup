@@ -1,14 +1,12 @@
 const PREF_KEY = 'mqa_user_preferences';
 
 export const DEFAULT_USER_PREFERENCES = {
-  layout: 'pr',
   collapsed: true,
 };
 
 function normalizePreferences(raw) {
-  const layout = raw?.layout === 'tr' ? 'tr' : 'pr';
   const collapsed = raw?.collapsed !== false;
-  return { layout, collapsed };
+  return { collapsed };
 }
 
 export function getUserPreferences() {
