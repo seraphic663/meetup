@@ -30,6 +30,19 @@ function sessionHeaders(sessionId = state.SID) {
   return getSessionAuthHeaders(sessionId);
 }
 
+function resizeCreateAiInput() {
+  const input = $('sAIPrompt');
+  if (!input || input.closest('#setupScreen')?.classList.contains('hidden')) return;
+
+  input.style.height = 'auto';
+  const styles = getComputedStyle(input);
+  const borderHeight = parseFloat(styles.borderTopWidth) + parseFloat(styles.borderBottomWidth);
+  const minHeight = 76;
+  const maxHeight = Math.max(minHeight, Math.min(window.innerHeight * 0.4, 320));
+  const contentHeight = input.scrollHeight + borderHeight;
+  input.style.height = `${Math.min(maxHeight, Math.max(minHeight, contentHeight))}px`;
+}
+
 function applyUserViewDefaults() {
   state.collapsed = state.userPrefs.collapsed;
 }
@@ -388,7 +401,7 @@ function openQuickDemo() {
     return dfmt(date);
   });
   const me = {
-    id: 'quick-example-me', name: '我', color: '#0f766e', remark: '',
+    id: 'quick-example-me', name: '我', color: '#416ba5', remark: '',
     intervals: [
       { id: 'sample-me-busy-1', date: dates[0], startMinute: 14 * 60, endMinute: 17 * 60, type: 'busy', note: '' },
       { id: 'sample-me-preferred-1', date: dates[0], startMinute: 18 * 60, endMinute: 20 * 60, type: 'preferred', note: '这段时间最方便' },
@@ -443,6 +456,7 @@ function openQuickDemo() {
 }
 function goToSetup() {
   showScreen('setupScreen');
+  requestAnimationFrame(resizeCreateAiInput);
 }
 
 function goToHistory() {
@@ -512,6 +526,8 @@ function initForm() {
   tagInput.addEventListener('blur', () => $('tagWrap').classList.remove('focused'));
 
   $('sPrompt').addEventListener('input', updatePromptCount);
+  $('sAIPrompt')?.addEventListener('input', resizeCreateAiInput);
+  window.addEventListener('resize', resizeCreateAiInput);
   $('managePrompt')?.addEventListener('input', updateManagePromptCount);
   updatePromptCount();
   updateManagePromptCount();

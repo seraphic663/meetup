@@ -1,16 +1,16 @@
 export const COLORS = [
   '#FF6B35',
-  '#4ECDC4',
+  '#4F72A8',
   '#45B7D1',
   '#9B59B6',
   '#E67E22',
-  '#27AE60',
+  '#64748B',
   '#E91E63',
   '#3498DB',
   '#F39C12',
-  '#1ABC9C',
+  '#7C3AED',
   '#E74C3C',
-  '#16A085',
+  '#2563EB',
 ];
 
 export const TUTORIAL_STEPS = [
@@ -21,7 +21,10 @@ export const TUTORIAL_STEPS = [
 ];
 
 export const CHANGELOG_ITEMS = [
+  { version: '1.7.1', title: '高密度时间轴视觉版', date: '2026-10-29', summary: '创建页收窄双栏、参与者卡片移至左栏；品牌标题同排居中，窄屏单列。' },
   { version: '1.7.0', title: '时间区间排期版', date: '2026-10-29', summary: '时间条成为唯一填写与汇总方式；普通参与者改粒度不舍入，发起人可选择舍入。' },
+  { version: '1.6.12', title: '时间条工具补齐版', date: '2026-10-29', summary: '汇总使用红色不方便并集带和绿色偏好占比带；点击区间查看人数。' },
+  { version: '1.6.11', title: '竖向时间条演示版', date: '2026-10-29', summary: '增加横向/竖向时间轴切换与时间条拖动调整；粒度冲突可选择舍入或保留。' },
   { version: '1.6.10', title: 'DeepSeek 调用修复版', date: '2026-09-07', summary: '适配 V4 默认思考模式，AI 总结与 AI 起草显式关闭思考后读取最终内容。' },
   { version: '1.6.9', title: '备注手动提交版', date: '2026-09-07', summary: '个人备注改为点击保存并公开，新增已公开备注展示，并避免轮询覆盖未保存输入。' },
   { version: '1.6.8', title: '常驻历史栏收口版', date: '2026-07-09', summary: '首页合并恢复旧表和最近表格，没历史时也固定展示历史栏。' },
