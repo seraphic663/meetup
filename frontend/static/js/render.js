@@ -20,11 +20,11 @@ export function renderHistoryCard() {
       </div>
     `;
     }).join('');
-    $('historyDesc').textContent = `${history.length} 个最近的表格；也可粘贴旧链接打开。`;
+    $('historyDesc').textContent = `显示最近 ${Math.min(history.length, 3)} 张表格；也可粘贴链接或表格 ID。`;
     return;
   }
-  $('historyDesc').textContent = '暂无本机历史；粘贴旧链接或表格 ID 也能打开。';
-  $('historyList').innerHTML = '<div class="history-mini-empty">还没有最近表格。创建新表后会自动出现在这里。</div>';
+  $('historyDesc').textContent = '粘贴链接或表格 ID，打开已有表格。';
+  $('historyList').innerHTML = '<div class="history-mini-empty">创建新表后，记录会显示在这里。</div>';
 }
 
 export function renderHistoryScreen() {

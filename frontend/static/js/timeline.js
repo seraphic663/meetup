@@ -1,6 +1,6 @@
 import { requestJson } from './api.js';
 import { getSessionAuthHeaders } from './history.js';
-import { $, esc, getDates, getDayTimeWindow, lerp, toast } from './helpers.js';
+import { $, esc, getDates, getDayTimeWindow, toast } from './helpers.js';
 import { state } from './state.js';
 
 const STEPS = [5, 10, 15, 20, 30, 60];
@@ -70,16 +70,16 @@ export function renderTimeline() {
   const width = axisEnd - axisStart;
   panel.innerHTML =
     '<section class="td-shell">' +
-      '<header class="td-head"><div><b>时间安排</b><p>空白表示普通候选；红色是不方便，绿色是更偏好。</p></div></header>' +
+      '<header class="td-head"><div><b>时间安排</b><p>空白表示未标记；红色为不方便，绿色为更偏好。</p></div></header>' +
       '<div class="td-tools">' +
         '<div class="td-legend" aria-label="时间条类型">' + toolButton('busy', '不方便') + toolButton('preferred', '更偏好') + '</div>' +
         '<div class="td-orientation" role="group" aria-label="时间轴方向">' +
           orientationButton('horizontal', '横向时间') + orientationButton('vertical', '竖向时间') + '</div>' +
-        '<label class="td-step">拖动步长<select data-step>' + STEPS.map(value =>
+        '<label class="td-step">粒度<select data-step>' + STEPS.map(value =>
           '<option value="' + value + '"' + (value === step ? ' selected' : '') + '>' + value + ' 分钟</option>').join('') + '</select></label>' +
-        '<span>' + (canEdit ? (orientation === 'vertical' ? '时间由上向下、参与者左右排列；在左侧时间刻度上下滑动页面，在参与者列拖动新建或移动；不足 45 分钟的短条整条移动，较长条可拖上下端调整。' : '时间由左向右；拖动空白处新建，拖条移动，拖两端调整。') + '松手立即生效；点条可编辑单一备注。' : '查看模式：可查看每位参与者标记的时间区间。') + '</span>' +
+        '<span>' + (canEdit ? (orientation === 'vertical' ? '空白处拖动新建；短条移动，长条可调两端。' : '空白处拖动新建；拖条移动，拖两端调整。') + '点条编辑备注。' : '查看各参与者标记的时间区间。') + '</span>' +
       '</div>' +
-      '<p class="td-local">汇总使用同一时间轴：红带覆盖至少一人不方便的区间，绿带按偏好人数占比加深。点击区间查看人数。</p>' +
+      '<p class="td-local">个人条 50% 透明；汇总红绿深浅对应各自人数占比。点击查看人数。</p>' +
       renderSummaryDetail() +
       '<div class="td-scroll td-scroll-' + orientation + '"><div class="td-days td-days-' + orientation + '">' + getDates(state.S).map(date => renderDay(date, axisStart, axisEnd, width)).join('') + '</div></div>' +
       renderEditor() + renderStepDialog() +
@@ -294,20 +294,18 @@ function renderSummarySegment(segment, axisStart, vertical, kind) {
   const { start, end, summary } = segment;
   const duration = end - start;
   const participantCount = state.S.participants.length;
-  const ratio = participantCount ? summary.preferredCount / participantCount : 0;
-  const background = kind === 'busy'
-    ? (summary.busyCount > 0 ? '#ef4444' : '#F1F3F5')
-    : (summary.preferredCount > 0 ? lerp('#C7EED7', '#08763E', ratio) : '#F1F3F5');
+  const count = kind === 'busy' ? summary.busyCount : summary.preferredCount;
+  const ratio = participantCount ? count / participantCount : 0;
   const size = duration * (vertical ? VERTICAL_PX_PER_MINUTE : 1);
-  const title = time(start) + '–' + time(end) + ' · 不方便 ' + summary.busyCount + '人 · 偏好 ' +
+  const title = time(start) + '–' + time(end) + ' · 不方便 ' + summary.busyCount + '/' + participantCount + '人 · 偏好 ' +
     summary.preferredCount + '/' + participantCount + '人';
   const selected = selectedSummary?.date === segment.date && selectedSummary?.start === start && selectedSummary?.end === end;
   const kindLabel = kind === 'busy' ? '不方便' : '偏好';
   const position = vertical
     ? 'left:' + (kind === 'busy' ? '4px' : '43px') + ';right:' + (kind === 'busy' ? '43px' : '4px') +
-      ';top:' + ((start - axisStart) * VERTICAL_PX_PER_MINUTE) + 'px;height:' + size + 'px;background:' + background + ';'
+      ';top:' + ((start - axisStart) * VERTICAL_PX_PER_MINUTE) + 'px;height:' + size + 'px;--td-summary-ratio:' + ratio + ';'
     : 'left:' + (start - axisStart) + 'px;width:' + duration + 'px;' +
-      (kind === 'busy' ? 'top:4px;bottom:20px;' : 'top:20px;bottom:4px;') + 'background:' + background + ';';
+      (kind === 'busy' ? 'top:4px;bottom:20px;' : 'top:20px;bottom:4px;') + '--td-summary-ratio:' + ratio + ';';
   const ariaLabel = title + '；' + kindLabel + '带';
   return '<button type="button" class="td-summary-segment td-summary-' + kind + (selected ? ' selected' : '') +
     '" data-summary-segment data-kind="' + kind + '" data-date="' + esc(segment.date) + '" data-start="' + start +
@@ -335,10 +333,11 @@ function getTimelineSummary(date, minute) {
 function renderSummaryDetail() {
   if (!selectedSummary) return '';
   const summary = getTimelineSummary(selectedSummary.date, selectedSummary.start);
+  const participantCount = state.S.participants.length;
   return '<aside class="td-summary-detail" role="status">' +
     '<strong>' + time(selectedSummary.start) + '–' + time(selectedSummary.end) + '</strong>' +
-    '<span>不方便：' + summary.busyCount + '人' + (summary.busyNames.length ? '（' + esc(summary.busyNames.join('、')) + '）' : '') + '</span>' +
-    '<span>偏好：' + summary.preferredCount + '/' + state.S.participants.length + '人' + (summary.preferredNames.length ? '（' + esc(summary.preferredNames.join('、')) + '）' : '') + '</span>' +
+    '<span>不方便：' + summary.busyCount + '/' + participantCount + '人' + (summary.busyNames.length ? '（' + esc(summary.busyNames.join('、')) + '）' : '') + '</span>' +
+    '<span>偏好：' + summary.preferredCount + '/' + participantCount + '人' + (summary.preferredNames.length ? '（' + esc(summary.preferredNames.join('、')) + '）' : '') + '</span>' +
     '<button type="button" data-close-summary>关闭</button>' +
     '</aside>';
 }
