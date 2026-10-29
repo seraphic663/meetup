@@ -238,6 +238,7 @@ def _call_deepseek(user_prompt: str, api_key: str, api_url: str, model: str):
         json={
             "model": model,
             "messages": [{"role": "user", "content": user_prompt}],
+            "thinking": {"type": "disabled"},
             "temperature": 0.2,
             "max_tokens": 500,
         },

@@ -1,5 +1,5 @@
 import { requestJson, ApiError } from './api.js';
-import { COLORS, ST_AVAIL, ST_BUSY, TUTORIAL_STEPS } from './constants.js';
+import { COLORS, TUTORIAL_STEPS } from './constants.js';
 import {
   clearParticipantAccess,
   clearSessionAccess,
@@ -14,11 +14,12 @@ import {
   saveParticipantName,
   saveToHistory,
 } from './history.js';
-import { $, clone, dayDiff, dfmt, esc, getDates, getHours, getSlotSummary, getState, isSlotEnabled, normalizeAvail, showScreen, toast } from './helpers.js';
+import { $, clone, dayDiff, dfmt, esc, showScreen, toast } from './helpers.js';
 import { getUserPreferences, saveUserPreferences } from './preferences.js';
-import { buildSummaryCell, cellStyle, getNextColor, renderGrid, renderHistoryCard, renderHistoryScreen, renderJoin, renderMain, updateCollapseButton, updateRemarkCounter, updateRemarkHint } from './render.js';
+import { getNextColor, renderHistoryCard, renderHistoryScreen, renderJoin, renderMain, renderPublicRemarks, renderRemarkCard, updateCollapseButton, updateRemarkCounter, updateRemarkHint } from './render.js';
 import { renderAISummary } from './summary.js';
 import { state } from './state.js';
+import { initTimeline, isTimelineDragging, renderTimeline, startTimeline } from './timeline.js';
 
 function getApiMessage(error, fallback) {
   if (error instanceof ApiError) return error.message || fallback;
@@ -30,13 +31,10 @@ function sessionHeaders(sessionId = state.SID) {
 }
 
 function applyUserViewDefaults() {
-  state.layout = state.userPrefs.layout;
   state.collapsed = state.userPrefs.collapsed;
 }
 
 function syncSettingsDraftButtons() {
-  $('prefLayoutTR')?.classList.toggle('active', state.settingsDraft.layout === 'tr');
-  $('prefLayoutPR')?.classList.toggle('active', state.settingsDraft.layout === 'pr');
   $('prefCollapseOff')?.classList.toggle('active', !state.settingsDraft.collapsed);
   $('prefCollapseOn')?.classList.toggle('active', state.settingsDraft.collapsed);
 }
@@ -53,11 +51,6 @@ function closeUserSettings() {
 
 function overlayBgSettings(event) {
   if (event.target === $('settingsOverlay')) closeUserSettings();
-}
-
-function setSettingsLayout(mode) {
-  state.settingsDraft.layout = mode === 'tr' ? 'tr' : 'pr';
-  syncSettingsDraftButtons();
 }
 
 function setSettingsCollapse(collapsed) {
@@ -245,11 +238,17 @@ function getCurrentParticipant() {
   return state.S?.participants?.find(item => item.id === state.ME) || null;
 }
 
+function clearRemarkState() {
+  state.myRemark = '';
+  state.remarkDraft = '';
+  state.remarkDirty = false;
+  state.remarkSaving = false;
+  state.remarkSyncPending = false;
+}
+
 function applySession(session) {
+  state.quickDemo = false;
   state.S = session;
-  state.S.participants.forEach(participant => {
-    participant.avail = normalizeAvail(participant.avail);
-  });
 
   if (state.S.viewer?.participantId) {
     state.ME = state.S.viewer.participantId;
@@ -261,8 +260,7 @@ function applySession(session) {
   } else if (state.ME && !state.S.participants.some(participant => participant.id === state.ME)) {
     state.ME = null;
     state.ME_NAME = '';
-    state.myAvail = {};
-    state.myRemark = '';
+    clearRemarkState();
     clearParticipantAccess(state.SID);
   }
 }
@@ -271,8 +269,11 @@ function hydrateCurrentUser(participantId, fallbackName = '') {
   state.ME = participantId;
   const participant = state.S?.participants?.find(item => item.id === state.ME);
   state.ME_NAME = participant?.name || fallbackName || '';
-  state.myAvail = participant?.avail ? clone(participant.avail) : {};
   state.myRemark = (participant?.remark || '').slice(0, 200);
+  state.remarkDraft = state.myRemark;
+  state.remarkDirty = false;
+  state.remarkSaving = false;
+  state.remarkSyncPending = false;
   saveParticipantName(state.SID, state.ME_NAME);
   saveToHistory(state.SID, state.S.name, state.S.dateS, state.S.dateE);
 }
@@ -298,15 +299,14 @@ function syncCurrentParticipant() {
   if (!state.ME || !state.S) return;
   const participant = state.S.participants.find(item => item.id === state.ME);
   if (!participant) return;
-  participant.avail = clone(state.myAvail);
   participant.remark = state.myRemark;
 }
 
 function renderMainScreen() {
   renderMain();
+  renderTimeline();
   renderSessionControls();
   bindRemarkInput();
-  attachEvents();
 }
 
 function bindRemarkInput() {
@@ -317,6 +317,8 @@ function bindRemarkInput() {
 function renderSessionControls() {
   const canManage = Boolean(state.S?.capabilities?.canManageSession);
   const canLeave = Boolean(state.S?.capabilities?.canLeaveSession);
+  $('switchUserBtn')?.classList.toggle('hidden', Boolean(state.quickDemo));
+  $('shareBtn')?.classList.toggle('hidden', Boolean(state.quickDemo));
   $('manageBtn')?.classList.toggle('hidden', !canManage);
   $('deleteSessionBtn')?.classList.toggle('hidden', !canManage);
   $('leaveSessionBtn')?.classList.toggle('hidden', !canLeave || canManage);
@@ -327,7 +329,13 @@ function showHome() {
   showScreen('homeScreen');
 }
 
+function confirmRemarkNavigation() {
+  if (!state.remarkDirty) return true;
+  return window.confirm('备注尚未保存，离开后会丢失这段内容。确定离开吗？');
+}
+
 function goToSession(sid) {
+  if (!confirmRemarkNavigation()) return;
   location.href = `/?s=${encodeURIComponent(sid)}`;
 }
 
@@ -357,12 +365,82 @@ function restoreSessionFromHome(event) {
 }
 
 function goToHome() {
+  if (!confirmRemarkNavigation()) return;
   stopPoll();
-  syncCurrentParticipant();
-  void saveAvail();
+  if (state.quickDemo) {
+    state.quickDemo = false;
+    state.SID = null;
+    state.S = null;
+    state.ME = null;
+    state.ME_NAME = '';
+    clearRemarkState();
+    showHome();
+    return;
+  }
   showHome();
 }
 
+function openQuickDemo() {
+  stopPoll();
+  const dates = Array.from({ length: 4 }, (_, offset) => {
+    const date = new Date();
+    date.setDate(date.getDate() + offset);
+    return dfmt(date);
+  });
+  const me = {
+    id: 'quick-example-me', name: '我', color: '#0f766e', remark: '',
+    intervals: [
+      { id: 'sample-me-busy-1', date: dates[0], startMinute: 14 * 60, endMinute: 17 * 60, type: 'busy', note: '' },
+      { id: 'sample-me-preferred-1', date: dates[0], startMinute: 18 * 60, endMinute: 20 * 60, type: 'preferred', note: '这段时间最方便' },
+      { id: 'sample-me-busy-2', date: dates[1], startMinute: 12 * 60 + 25, endMinute: 15 * 60 + 35, type: 'busy', note: '' },
+      { id: 'sample-me-preferred-2', date: dates[1], startMinute: 17 * 60 + 15, endMinute: 19 * 60 + 45, type: 'preferred', note: '' },
+      { id: 'sample-me-busy-3', date: dates[2], startMinute: 11 * 60, endMinute: 13 * 60, type: 'busy', note: '' },
+      { id: 'sample-me-preferred-3', date: dates[2], startMinute: 13 * 60, endMinute: 16 * 60, type: 'preferred', note: '' },
+      { id: 'sample-me-preferred-4', date: dates[3], startMinute: 10 * 60, endMinute: 14 * 60, type: 'preferred', note: '' },
+      { id: 'sample-me-busy-4', date: dates[3], startMinute: 14 * 60 + 30, endMinute: 16 * 60 + 30, type: 'busy', note: '' },
+    ],
+  };
+  const guests = [
+    {
+      id: 'quick-example-a', name: '小陈', color: COLORS[0], remark: '',
+      intervals: [
+        { id: 'sample-a-busy-1', date: dates[2], startMinute: 14 * 60, endMinute: 17 * 60, type: 'busy', note: '' },
+        { id: 'sample-a-preferred-1', date: dates[0], startMinute: 17 * 60, endMinute: 19 * 60, type: 'preferred', note: '' },
+        { id: 'sample-a-preferred-2', date: dates[1], startMinute: 16 * 60, endMinute: 18 * 60, type: 'preferred', note: '' },
+        { id: 'sample-a-preferred-3', date: dates[2], startMinute: 12 * 60, endMinute: 14 * 60, type: 'preferred', note: '' },
+        { id: 'sample-a-preferred-4', date: dates[3], startMinute: 11 * 60, endMinute: 13 * 60, type: 'preferred', note: '' },
+      ],
+    },
+    {
+      id: 'quick-example-b', name: '小林', color: COLORS[1], remark: '',
+      intervals: [
+        { id: 'sample-b-busy-1', date: dates[1], startMinute: 10 * 60, endMinute: 12 * 60, type: 'busy', note: '' },
+        { id: 'sample-b-busy-2', date: dates[3], startMinute: 13 * 60, endMinute: 16 * 60, type: 'busy', note: '' },
+        { id: 'sample-b-preferred-1', date: dates[0], startMinute: 15 * 60, endMinute: 16 * 60, type: 'preferred', note: '' },
+        { id: 'sample-b-preferred-2', date: dates[1], startMinute: 17 * 60, endMinute: 19 * 60, type: 'preferred', note: '' },
+        { id: 'sample-b-preferred-3', date: dates[2], startMinute: 16 * 60, endMinute: 18 * 60, type: 'preferred', note: '' },
+        { id: 'sample-b-preferred-4', date: dates[3], startMinute: 10 * 60, endMinute: 12 * 60, type: 'preferred', note: '' },
+      ],
+    },
+  ];
+  state.quickDemo = true;
+  state.SID = 'quick-example-' + Date.now();
+  state.S = {
+    id: state.SID,
+    name: '快速示例',
+    dateS: dates[0], dateE: dates[3],
+    hourS: 9, hourE: 21, firstHourS: 13, lastHourE: 17,
+    creatorName: '', creatorPrompt: '', expectedNames: [], requiredNames: [],
+    participants: [me, ...guests],
+    capabilities: { canManageSession: false, canLeaveSession: false },
+  };
+  state.ME = me.id;
+  state.ME_NAME = me.name;
+  clearRemarkState();
+  startTimeline();
+  renderMainScreen();
+  showScreen('mainScreen');
+}
 function goToSetup() {
   showScreen('setupScreen');
 }
@@ -606,7 +684,7 @@ async function joinSession() {
     renderMainScreen();
     showScreen('mainScreen');
     startPoll();
-    toast(existing ? `欢迎回来，${state.ME_NAME} 👋` : '点格子循环：有空（彩色）→ 没空（红✕）→ 不确定/未填（灰色）');
+    toast(existing ? `欢迎回来，${state.ME_NAME} 👋` : '进入后拖动时间轴，标记不方便或偏好时段。');
   } catch (error) {
     toast(getApiMessage(error, '加入失败，请重试'));
   }
@@ -622,8 +700,7 @@ async function resumeSession() {
 function viewOnly() {
   state.ME = null;
   state.ME_NAME = '';
-  state.myAvail = {};
-  state.myRemark = '';
+  clearRemarkState();
   saveToHistory(state.SID, state.S.name, state.S.dateS, state.S.dateE);
   applyUserViewDefaults();
   renderMainScreen();
@@ -632,35 +709,20 @@ function viewOnly() {
 }
 
 function switchUser() {
+  if (!confirmRemarkNavigation()) return;
   stopPoll();
   state.ME = null;
   state.ME_NAME = '';
-  state.myAvail = {};
-  state.myRemark = '';
+  clearRemarkState();
   renderJoin();
   showScreen('joinScreen');
-}
-
-function setLayout(mode) {
-  state.layout = mode;
-  $('btnTR').classList.toggle('active', mode === 'tr');
-  $('btnPR').classList.toggle('active', mode === 'pr');
-  renderGrid();
-  attachEvents();
 }
 
 function setCollapseState(collapsed) {
   state.collapsed = Boolean(collapsed);
   updateCollapseButton();
-  document.querySelectorAll('tr.other-row').forEach(row => row.classList.toggle('collapsed', state.collapsed));
-  document.querySelectorAll('.other-col').forEach(node => {
-    node.style.display = state.collapsed ? 'none' : '';
-  });
-  document.querySelectorAll('.toggle-btn-row td').forEach(cell => {
-    cell.textContent = state.collapsed ? '展开其他人' : '收起其他人';
-  });
+  renderTimeline();
 }
-
 function collapseOthers() {
   setCollapseState(true);
 }
@@ -674,138 +736,54 @@ function toggleCollapse() {
 }
 
 function onRemarkInput(event) {
-  state.myRemark = (event?.target?.value || '').slice(0, 200);
-  syncCurrentParticipant();
+  state.remarkDraft = (event?.target?.value || '').slice(0, 200);
+  state.remarkDirty = state.remarkDraft !== state.myRemark;
   updateRemarkCounter();
-  updateRemarkHint('保存中…');
-  clearTimeout(state.remarkSaveT);
-  state.remarkSaveT = setTimeout(async () => {
-    await saveAvail();
-    updateRemarkHint('已保存');
-  }, 350);
+  updateRemarkHint(state.remarkDirty ? '未保存' : (state.myRemark ? '已提交，组员可见' : '尚未填写'));
 }
 
-function attachEvents() {
-  if (!state.ME) return;
-  document.querySelectorAll('.ci.ed').forEach(cell => {
-    cell.addEventListener('mousedown', onDown, { passive: false });
-    cell.addEventListener('mouseenter', onEnter);
-    cell.addEventListener('touchstart', onTouchStart, { passive: false });
-    cell.addEventListener('touchmove', onTouchMove, { passive: false });
-  });
-}
+async function saveRemark() {
+  if (!state.ME || !state.SID) return toast('需要先选择参与者');
+  if (state.remarkSaving) return;
+  if (!state.remarkDirty) return toast('没有新的备注修改');
 
-function onDown(event) {
-  event.preventDefault();
-  startDrag(event.currentTarget);
-}
+  const remark = (state.remarkDraft || '').slice(0, 200);
+  const button = $('saveRemarkBtn');
+  state.remarkSaving = true;
+  if (button) button.disabled = true;
+  updateRemarkHint('提交中…');
 
-function onTouchStart(event) {
-  event.preventDefault();
-  startDrag(event.currentTarget);
-}
-
-function onEnter(event) {
-  if (!state.drag.on) return;
-  const cell = event.currentTarget;
-  if (Number(cell.dataset.col) !== state.drag.col) return;
-  const key = `${cell.dataset.date}-${cell.dataset.hour}`;
-  if (key === state.drag.lastKey) return;
-  state.drag.lastKey = key;
-  applyCell(cell.dataset.date, Number(cell.dataset.hour), state.drag.fillTo, cell);
-}
-
-function onTouchMove(event) {
-  if (!state.drag.on) return;
-  event.preventDefault();
-  const cell = document.elementFromPoint(event.touches[0].clientX, event.touches[0].clientY)?.closest('.ci.ed');
-  if (!cell || Number(cell.dataset.col) !== state.drag.col) return;
-  const key = `${cell.dataset.date}-${cell.dataset.hour}`;
-  if (key === state.drag.lastKey) return;
-  state.drag.lastKey = key;
-  applyCell(cell.dataset.date, Number(cell.dataset.hour), state.drag.fillTo, cell);
-}
-
-function startDrag(cell) {
-  const date = cell.dataset.date;
-  const hour = Number(cell.dataset.hour);
-  const col = Number(cell.dataset.col);
-  const current = getState(state.myAvail[date] || {}, hour);
-  const next = (current + 1) % 3;
-  state.drag = { on: true, fillTo: next, col, lastKey: `${date}-${hour}` };
-  applyCell(date, hour, next, cell);
-}
-
-function applyCell(date, hour, status, cell) {
-  if (!state.myAvail[date]) state.myAvail[date] = {};
-  state.myAvail[date][String(hour)] = status;
-  if (cell) {
-    const me = getCurrentParticipant();
-    cell.setAttribute('style', cellStyle(status, me?.color || '#07C160'));
-    cell.textContent = status === ST_BUSY ? '✕' : '';
-  }
-}
-
-function endDrag() {
-  if (!state.drag.on) return;
-  state.drag.on = false;
-  syncCurrentParticipant();
-  refreshSummary();
-  clearTimeout(state.saveT);
-  state.saveT = setTimeout(() => {
-    void saveAvail();
-  }, 400);
-}
-
-async function saveAvail() {
-  if (!state.ME || !state.SID) return;
+  let saved = false;
   try {
-    await requestJson(`/api/session/${state.SID}/avail`, {
+    await requestJson(`/api/session/${state.SID}/remark`, {
       method: 'PUT',
       headers: sessionHeaders(),
-      body: { name: state.ME_NAME, avail: state.myAvail, remark: state.myRemark },
+      body: { remark },
     });
+    saved = true;
   } catch (_) {
-    updateRemarkHint('保存失败');
+    // Keep the draft in the textarea so the user can retry without retyping.
   }
-}
 
-function refreshSummary() {
-  const participants = state.S.participants;
-  const currentUserIndex = participants.findIndex(participant => participant.id === state.ME);
-  const maxParticipants = participants.length;
+  state.remarkSaving = false;
+  if (!saved) {
+    if (button) button.disabled = false;
+    updateRemarkHint('提交失败，请重试');
+    return;
+  }
 
-  getDates(state.S).forEach(date => {
-    const myDayAvail = state.ME ? (state.myAvail[date] || {}) : {};
-    getHours(state.S).forEach(hour => {
-      if (!isSlotEnabled(state.S, date, hour)) return;
-      const summary = getSlotSummary(participants, currentUserIndex, myDayAvail, date, hour);
-      const row = document.querySelector(`table.sg.m-tr[data-date="${date}"] tr[data-h="${hour}"] .si`);
-      if (row) row.outerHTML = buildSummaryCell(summary.availableCount, summary.busyCount, maxParticipants, summary);
-    });
-
-    if (state.layout === 'pr') {
-      const summaryRow = document.querySelector(`tr.sum-row[data-date="${date}"]`);
-      if (summaryRow) {
-        const cells = summaryRow.querySelectorAll('td.td-h');
-        getHours(state.S).forEach((hour, index) => {
-          if (!isSlotEnabled(state.S, date, hour)) return;
-          const summary = getSlotSummary(participants, currentUserIndex, state.myAvail[date] || {}, date, hour);
-          if (cells[index]) cells[index].innerHTML = buildSummaryCell(summary.availableCount, summary.busyCount, maxParticipants, summary);
-        });
-      }
-
-      participants.forEach((participant, index) => {
-        const cell = document.querySelector(`table.sg.m-pr[data-date="${date}"] tr[data-pi="${index}"] .td-psum .si`);
-        if (!cell) return;
-        const avail = index === currentUserIndex ? (state.myAvail[date] || {}) : (participant.avail[date] || {});
-        const availableCount = getHours(state.S).filter(hour => isSlotEnabled(state.S, date, hour) && getState(avail, hour) === ST_AVAIL).length;
-        const style = availableCount > 0 ? 'background:#E8F8F0;color:#0F766E' : 'background:#F5F5F5;color:#CBD5E1';
-        cell.setAttribute('style', style);
-        cell.innerHTML = `${availableCount > 0 ? availableCount : ''}${participant.isRequired ? '<span class="si-person-tag">关键</span>' : ''}`;
-      });
-    }
-  });
+  const draftChangedDuringSave = state.remarkDraft !== remark;
+  state.myRemark = remark;
+  if (!draftChangedDuringSave) state.remarkDraft = remark;
+  state.remarkDirty = draftChangedDuringSave;
+  state.remarkSyncPending = true;
+  syncCurrentParticipant();
+  renderPublicRemarks();
+  renderRemarkCard();
+  updateRemarkHint(draftChangedDuringSave
+    ? '上一版已提交，当前修改尚未保存'
+    : (remark ? '已提交，组员可见' : '已清除，组员不可见'));
+  if (button) button.disabled = false;
 }
 
 function startPoll() {
@@ -821,7 +799,7 @@ function stopPoll() {
 }
 
 async function doPoll() {
-  if (state.drag.on || !state.SID) return;
+  if (isTimelineDragging() || !state.SID) return;
   let freshSession;
   try {
     freshSession = await requestJson(`/api/session/${state.SID}`, { headers: sessionHeaders() });
@@ -842,9 +820,15 @@ async function doPoll() {
     const current = getCurrentParticipant();
     if (current) {
       state.ME_NAME = current.name;
-      if (!state.drag.on) {
-        state.myAvail = clone(current.avail || {});
-        state.myRemark = (current.remark || '').slice(0, 200);
+      const serverRemark = (current.remark || '').slice(0, 200);
+      if (state.remarkDirty || state.remarkSaving) {
+        // Keep the local draft while the user is editing or submitting it.
+      } else if (state.remarkSyncPending && serverRemark !== state.myRemark) {
+        current.remark = state.myRemark;
+      } else {
+        state.myRemark = serverRemark;
+        state.remarkDraft = serverRemark;
+        state.remarkSyncPending = false;
       }
     }
   }
@@ -1104,6 +1088,7 @@ async function leaveCurrentSession() {
   const access = getSessionAccess(state.SID);
   const participantId = state.S?.viewer?.participantId || access.participantId;
   if (!participantId) return toast('当前没有可退出的参与身份');
+  if (!confirmRemarkNavigation()) return;
   if (!window.confirm('确认从这张表中退出吗？')) return;
   try {
     await requestJson(`/api/session/${state.SID}/participants/${participantId}`, {
@@ -1113,8 +1098,7 @@ async function leaveCurrentSession() {
     clearParticipantAccess(state.SID);
     state.ME = null;
     state.ME_NAME = '';
-    state.myAvail = {};
-    state.myRemark = '';
+    clearRemarkState();
     const fresh = await requestJson(`/api/session/${state.SID}`, { headers: sessionHeaders() });
     applySession(fresh);
     renderJoin();
@@ -1161,8 +1145,7 @@ async function leaveSessionFromHistory(sid) {
 }
 
 async function init() {
-  document.addEventListener('mouseup', endDrag);
-  document.addEventListener('touchend', endDrag);
+  initTimeline();
 
   const params = new URLSearchParams(location.search);
   state.SID = params.get('s');
@@ -1180,10 +1163,15 @@ async function init() {
       showScreen('joinScreen');
     } catch (error) {
       const missing = error instanceof ApiError && error.status === 404;
+      if (missing) {
+        removeHistoryItem(state.SID);
+        clearSessionAccess(state.SID);
+        localStorage.removeItem(`mqa_${state.SID}`);
+      }
       window.history.replaceState(null, '', '/');
       state.SID = null;
       showHome();
-      toast(missing ? '表格不存在或已过期，可以在首页最近表格中删除该记录' : getApiMessage(error, '打开失败，请稍后重试'));
+      toast(missing ? '这张表格已失效，已从本机历史中清除' : getApiMessage(error, '打开失败，请稍后重试'));
     }
     return;
   }
@@ -1203,12 +1191,14 @@ Object.assign(window, {
   focusTagInput,
   goToHistory,
   goToHome,
+  openQuickDemo,
   goToSession,
   goToSetup,
   removeSessionFromHistory,
   leaveCurrentSession,
   leaveSessionFromHistory,
   joinSession,
+  saveRemark,
   openManageSession,
   openAISummary,
   openShare,
@@ -1226,9 +1216,7 @@ Object.assign(window, {
   restoreSessionFromHome,
   saveManagedSession,
   saveUserViewPreferences,
-  setLayout,
   setSettingsCollapse,
-  setSettingsLayout,
   showTutorial,
   skipTutorial,
   switchUser,

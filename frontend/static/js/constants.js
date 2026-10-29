@@ -13,20 +13,17 @@ export const COLORS = [
   '#16A085',
 ];
 
-export const WD = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-
-export const ST_EMPTY = 0;
-export const ST_AVAIL = 1;
-export const ST_BUSY = 2;
-
 export const TUTORIAL_STEPS = [
-  { emoji: '1️⃣', title: '点击格子循环切换状态', desc: '绿色 = 有空，红✕ = 没空，灰色 = 未填。每点一次循环切换。' },
-  { emoji: '2️⃣', title: '拖拽批量填写', desc: '按住并上下拖动，快速填充多个相同的时段。' },
-  { emoji: '3️⃣', title: '切换布局查看', desc: '时间为行 vs 人员为行，两种视角全面了解情况。' },
-  { emoji: '4️⃣', title: '分享链接邀请', desc: '复制链接，发微信群，朋友点链接选名字就能填。' },
+  { emoji: '1️⃣', title: '标记时间段', desc: '选择“不方便”或“更偏好”，在时间轴上拖动创建区间。' },
+  { emoji: '2️⃣', title: '调整区间和备注', desc: '拖动时间条可移动区间，拖动两端可调整时间；点按时间条可编辑一条备注。' },
+  { emoji: '3️⃣', title: '设置时间粒度', desc: '可选 5 至 60 分钟；普通参与者切换时保留已有时间，发起人可选择舍入或保留。' },
+  { emoji: '4️⃣', title: '分享链接邀请', desc: '复制链接发给参与者，大家填写后会实时显示在时间轴上。' },
 ];
 
 export const CHANGELOG_ITEMS = [
+  { version: '1.7.0', title: '时间区间排期版', date: '2026-10-29', summary: '时间条成为唯一填写与汇总方式；普通参与者改粒度不舍入，发起人可选择舍入。' },
+  { version: '1.6.10', title: 'DeepSeek 调用修复版', date: '2026-09-07', summary: '适配 V4 默认思考模式，AI 总结与 AI 起草显式关闭思考后读取最终内容。' },
+  { version: '1.6.9', title: '备注手动提交版', date: '2026-09-07', summary: '个人备注改为点击保存并公开，新增已公开备注展示，并避免轮询覆盖未保存输入。' },
   { version: '1.6.8', title: '常驻历史栏收口版', date: '2026-07-09', summary: '首页合并恢复旧表和最近表格，没历史时也固定展示历史栏。' },
   { version: '1.6.7', title: '旧表链接恢复版', date: '2026-07-09', summary: '首页常驻恢复旧表入口，可粘贴分享链接或表格 ID 打开旧表。' },
   { version: '1.6.6', title: '失效历史记录清理版', date: '2026-07-09', summary: '打开不存在或过期表格时回到首页提示，并可直接从最近表格移除记录。' },

@@ -1,9 +1,9 @@
 # 群约小助手｜SQLite 备份与恢复 SOP
 
-日期：2026-03-29  
+建立日期：2026-03-29 · Railway Volume 更新：2026-10-29
 适用范围：当前仓库默认数据存储 `sessions/sessions.db`
 
-说明：当前 SQLite 库已按业务拆为多张表（`sessions / session_expected_names / session_required_names / participants / availability`），但备份与恢复仍然按单个 `.db` 文件处理。
+说明：当前 SQLite 库按业务拆为多张表（`sessions / session_expected_names / session_required_names / participants / time_intervals`），备份与恢复仍然按单个 `.db` 文件处理。
 
 ---
 
@@ -17,7 +17,7 @@
 
 原则：
 
-- **先停服务，再复制数据库**
+- **直接复制数据库文件前先停止写入；在线备份使用 SQLite Backup API，避免复制正在写入的文件**
 - **先备份当前库，再做恢复覆盖**
 - **恢复后必须做可读性验证**
 
@@ -25,13 +25,15 @@
 
 ## 2. 默认数据位置
 
-本地默认路径：
+本地默认相对路径：
 
 ```text
 sessions/sessions.db
 ```
 
 如果部署环境配置了 `DB_PATH`，以该环境变量为准。
+
+Railway production 的 `web` 服务当前使用 `web-volume`，挂载点为 `/app/sessions`。后端默认数据库路径会解析为 `/app/sessions/sessions.db`，因此该环境不需要额外设置 `DB_PATH`；若更改挂载点或数据库路径，必须确保 `DB_PATH` 仍指向 Volume 内的文件。Volume 用于跨发布和重启持久化，不是独立备份。
 
 ---
 
@@ -113,7 +115,7 @@ GET /healthz
 
 - 打开一个已知存在的调查链接
 - 确认参与者和时段数据可读取
-- 随机修改一条可用性数据并确认可保存
+- 创建、修改并保存一段时间条
 
 如果验证失败：
 
@@ -124,17 +126,25 @@ GET /healthz
 
 ## 6. Railway 场景说明
 
-如果线上仍使用临时文件系统，重启后 SQLite 数据会丢失。  
-要把 SQLite 用在 Railway 上，至少满足两个条件：
+当前 Railway production 已完成以下持久化配置：
 
-1. 已挂载持久化 Volume
-2. `DB_PATH` 指向该 Volume 内的数据库文件
+- `web-volume` 挂载到 `/app/sessions`
+- 数据库位于 `/app/sessions/sessions.db`，与后端默认路径一致
+- 不需要设置 `DB_PATH`；若自定义数据库位置，必须放在挂载的 Volume 内
 
-建议流程：
+备份和恢复仍需单独执行，Volume 本身不能替代备份。操作时：
 
-- 发布前先在 Volume 内复制一份数据库备份
-- 恢复时先停止服务，再用备份文件覆盖当前数据库
-- 恢复后先跑 `/healthz`，再做一次真实页面验证
+1. 备份时停止写入，或使用 Python `sqlite3.Connection.backup()` 创建一致快照；不要在服务仍写入时直接复制或下载活动数据库文件。
+2. 恢复前先为当前 Volume 数据库留一份独立快照，再在停止写入的维护窗口将备份恢复到 `/app/sessions/sessions.db`。
+3. 重启 Railway 服务后检查 `/healthz`，并通过一个已知会话的 API 或页面确认参与者和可用时间仍可读取。
+
+Railway CLI 的 `railway volume files` 可用于管理 Volume 文件。上传恢复文件时必须确认选中 production 的 `web-volume`，并避免在应用继续写入数据库时覆盖目标文件。
+
+### 1.7.0 时间区间存储迁移
+
+首次启动新版时，若 `PRAGMA user_version` 低于 1，应用会一次性清除旧排期数据（旧会话、参与者、令牌、个人整体说明和逐小时状态），并创建时间条存储表。此清理是有意的数据重置；后续启动不会重复执行。Railway Volume 与数据库文件继续保留，重置后可立即创建新表。
+
+发布前应按本 SOP 留存一次在线 SQLite 快照。不要把旧数据库快照直接恢复给 1.7.0 及之后的代码：低版本数据库会再次触发重置；如确需查看旧快照，应与兼容旧 schema 的旧应用版本配合使用。
 
 如果后续线上并发或数据重要性继续提高，应评估迁移到 PostgreSQL，而不是继续放大 SQLite 的运维负担。
 

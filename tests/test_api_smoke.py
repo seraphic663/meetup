@@ -1,8 +1,10 @@
 import os
+import sqlite3
 import sys
 import unittest
 from pathlib import Path
 import importlib
+from unittest.mock import Mock, patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,6 +14,7 @@ if str(ROOT) not in sys.path:
 os.environ["DB_PATH"] = "file:meetup_test?mode=memory&cache=shared"
 
 server = importlib.import_module("backend.server")
+create_draft = importlib.import_module("backend.create_draft")
 
 
 class TestApiSmoke(unittest.TestCase):
@@ -55,6 +58,20 @@ class TestApiSmoke(unittest.TestCase):
         self.assertTrue(data.get("participantToken"))
         return data
 
+    def _save_intervals(self, sid, participant, intervals):
+        return self.client.put(
+            f"/api/session/{sid}/intervals",
+            headers={"X-Participant-Token": participant["participantToken"]},
+            json={"intervals": intervals},
+        )
+
+    def _save_remark(self, sid, participant, remark):
+        return self.client.put(
+            f"/api/session/{sid}/remark",
+            headers={"X-Participant-Token": participant["participantToken"]},
+            json={"remark": remark},
+        )
+
     def test_01_create_session(self):
         sid, creator_token = self._create_session()
         self.assertEqual(len(sid), 8)
@@ -66,33 +83,37 @@ class TestApiSmoke(unittest.TestCase):
         names = [p["name"] for p in data.get("session", {}).get("participants", [])]
         self.assertIn("Alice", names)
 
-    def test_03_update_avail_and_remark(self):
+    def test_03_update_intervals_and_remark(self):
         sid, _ = self._create_session()
         joined = self._join_session(sid, "Alice", "#00AAFF")
-        resp = self.client.put(
-            f"/api/session/{sid}/avail",
-            headers={"X-Participant-Token": joined["participantToken"]},
-            json={
-                "name": "Alice",
-                "avail": {"2026-03-20": {"9": 1, "10": 2}},
-                "remark": "10点后可参会",
-            },
+        unauthenticated = self.client.put(
+            f"/api/session/{sid}/intervals", json={"intervals": []}
         )
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.get_json().get("ok"), True)
+        self.assertEqual(unauthenticated.status_code, 403)
+
+        overlapping = self._save_intervals(sid, joined, [
+            {"id": "busy", "date": "2026-03-20", "startMinute": 540, "endMinute": 630, "type": "busy"},
+            {"id": "preferred", "date": "2026-03-20", "startMinute": 600, "endMinute": 660, "type": "preferred"},
+        ])
+        self.assertEqual(overlapping.status_code, 400)
+
+        saved = self._save_intervals(sid, joined, [
+            {"id": "busy", "date": "2026-03-20", "startMinute": 540, "endMinute": 600, "type": "busy"},
+            {"id": "preferred", "date": "2026-03-20", "startMinute": 600, "endMinute": 660, "type": "preferred", "note": "10点后方便"},
+        ])
+        self.assertEqual(saved.status_code, 200)
+        self.assertEqual(saved.get_json().get("ok"), True)
+        remark = self._save_remark(sid, joined, "通常上午不便")
+        self.assertEqual(remark.status_code, 200)
+        self.assertEqual(remark.get_json().get("remark"), "通常上午不便")
 
     def test_04_read_session(self):
         sid, creator_token = self._create_session()
         joined = self._join_session(sid, "Alice", "#00AAFF")
-        self.client.put(
-            f"/api/session/{sid}/avail",
-            headers={"X-Participant-Token": joined["participantToken"]},
-            json={
-                "name": "Alice",
-                "avail": {"2026-03-20": {"9": 1}},
-                "remark": "仅上午可参与",
-            },
-        )
+        self._save_intervals(sid, joined, [
+            {"id": "morning", "date": "2026-03-20", "startMinute": 540, "endMinute": 600, "type": "preferred"},
+        ])
+        self._save_remark(sid, joined, "通常上午比较方便")
 
         resp = self.client.get(
             f"/api/session/{sid}",
@@ -113,8 +134,10 @@ class TestApiSmoke(unittest.TestCase):
         self.assertEqual(len(participants), 1)
         self.assertTrue(participants[0].get("id"))
         self.assertEqual(participants[0].get("name"), "Alice")
-        self.assertEqual(participants[0].get("remark"), "仅上午可参与")
-        self.assertEqual(participants[0].get("avail", {}).get("2026-03-20", {}).get("9"), 1)
+        self.assertEqual(participants[0].get("remark"), "通常上午比较方便")
+        self.assertEqual(participants[0].get("intervals"), [
+            {"id": "morning", "date": "2026-03-20", "startMinute": 540, "endMinute": 600, "type": "preferred", "note": ""},
+        ])
 
     def test_05_invalid_create_payload(self):
         resp = self.client.post(
@@ -138,24 +161,14 @@ class TestApiSmoke(unittest.TestCase):
         sid, _ = self._create_session()
         alice = self._join_session(sid, "Alice", "#00AAFF")
         bob = self._join_session(sid, "Bob", "#22CC88")
-        self.client.put(
-            f"/api/session/{sid}/avail",
-            headers={"X-Participant-Token": alice["participantToken"]},
-            json={
-                "name": "Alice",
-                "avail": {"2026-03-20": {"9": 1, "10": 1}},
-                "remark": "上午优先",
-            },
-        )
-        self.client.put(
-            f"/api/session/{sid}/avail",
-            headers={"X-Participant-Token": bob["participantToken"]},
-            json={
-                "name": "Bob",
-                "avail": {"2026-03-20": {"9": 2, "10": 1}},
-                "remark": "",
-            },
-        )
+        self._save_intervals(sid, alice, [
+            {"id": "alice-pref", "date": "2026-03-20", "startMinute": 540, "endMinute": 660, "type": "preferred"},
+        ])
+        self._save_remark(sid, alice, "上午优先")
+        self._save_intervals(sid, bob, [
+            {"id": "bob-busy", "date": "2026-03-20", "startMinute": 540, "endMinute": 600, "type": "busy"},
+            {"id": "bob-pref", "date": "2026-03-20", "startMinute": 600, "endMinute": 660, "type": "preferred"},
+        ])
 
         previous_key = server.DEEPSEEK_API_KEY
         setattr(server, "DEEPSEEK_API_KEY", "")
@@ -177,15 +190,11 @@ class TestApiSmoke(unittest.TestCase):
     def test_08_creator_can_update_session(self):
         sid, creator_token = self._create_session()
         alice = self._join_session(sid, "Alice", "#00AAFF")
-        self.client.put(
-            f"/api/session/{sid}/avail",
-            headers={"X-Participant-Token": alice["participantToken"]},
-            json={
-                "name": "Alice",
-                "avail": {"2026-03-20": {"9": 1, "10": 1, "11": 1}},
-                "remark": "上午都行",
-            },
-        )
+        self._save_intervals(sid, alice, [
+            {"id": "outside-new-window", "date": "2026-03-20", "startMinute": 600, "endMinute": 630, "type": "busy"},
+            {"id": "alice-pref", "date": "2026-03-20", "startMinute": 660, "endMinute": 720, "type": "preferred"},
+        ])
+        self._save_remark(sid, alice, "上午都行")
 
         resp = self.client.patch(
             f"/api/session/{sid}",
@@ -220,7 +229,9 @@ class TestApiSmoke(unittest.TestCase):
         self.assertEqual(renamed["name"], "Alice-改名")
         self.assertEqual(renamed["isRequired"], True)
         self.assertEqual(renamed["remark"], "上午都行")
-        self.assertEqual(renamed["avail"], {"2026-03-20": {"11": 1}})
+        self.assertEqual(renamed["intervals"], [
+            {"id": "alice-pref", "date": "2026-03-20", "startMinute": 660, "endMinute": 720, "type": "preferred", "note": ""},
+        ])
 
     def test_09_participant_can_leave_but_cannot_delete_session(self):
         sid, creator_token = self._create_session()
@@ -268,7 +279,7 @@ class TestApiSmoke(unittest.TestCase):
         self.assertEqual(resp.get_json().get("error", {}).get("code"), "creator_auth_required")
         self.assertIsNotNone(server._load(sid))
 
-    def test_11_truncated_range_blocks_invalid_slots(self):
+    def test_11_truncated_range_validates_intervals(self):
         resp = self.client.post(
             "/api/session",
             json={
@@ -289,18 +300,22 @@ class TestApiSmoke(unittest.TestCase):
         sid = data["id"]
         alice = self._join_session(sid, "Alice", "#00AAFF")
 
-        save_resp = self.client.put(
-            f"/api/session/{sid}/avail",
-            headers={"X-Participant-Token": alice["participantToken"]},
-            json={
-                "name": "Alice",
-                "avail": {
-                    "2026-03-20": {"10": 1, "14": 1, "21": 2},
-                    "2026-03-21": {"10": 1, "21": 1},
-                    "2026-03-22": {"10": 1, "19": 2, "20": 1},
-                },
-            },
-        )
+        outside_window = self._save_intervals(sid, alice, [
+            {"id": "day-1-outside-start", "date": "2026-03-20", "startMinute": 600, "endMinute": 630, "type": "preferred"},
+        ])
+        self.assertEqual(outside_window.status_code, 400)
+        outside_last_day = self._save_intervals(sid, alice, [
+            {"id": "day-3-outside-end", "date": "2026-03-22", "startMinute": 1200, "endMinute": 1260, "type": "preferred"},
+        ])
+        self.assertEqual(outside_last_day.status_code, 400)
+
+        save_resp = self._save_intervals(sid, alice, [
+            {"id": "day-1-valid", "date": "2026-03-20", "startMinute": 840, "endMinute": 900, "type": "preferred"},
+            {"id": "day-2-start", "date": "2026-03-21", "startMinute": 600, "endMinute": 660, "type": "preferred"},
+            {"id": "day-2-end", "date": "2026-03-21", "startMinute": 1260, "endMinute": 1320, "type": "busy"},
+            {"id": "day-3-valid", "date": "2026-03-22", "startMinute": 600, "endMinute": 660, "type": "preferred"},
+            {"id": "day-3-end", "date": "2026-03-22", "startMinute": 1140, "endMinute": 1200, "type": "busy"},
+        ])
         self.assertEqual(save_resp.status_code, 200)
 
         read_resp = self.client.get(
@@ -312,14 +327,13 @@ class TestApiSmoke(unittest.TestCase):
         self.assertEqual(session.get("firstHourS"), 14)
         self.assertEqual(session.get("lastHourE"), 20)
         participant = session.get("participants", [])[0]
-        self.assertEqual(
-            participant.get("avail"),
-            {
-                "2026-03-20": {"14": 1, "21": 2},
-                "2026-03-21": {"10": 1, "21": 1},
-                "2026-03-22": {"10": 1, "19": 2},
-            },
-        )
+        self.assertEqual(participant.get("intervals"), [
+            {"id": "day-1-valid", "date": "2026-03-20", "startMinute": 840, "endMinute": 900, "type": "preferred", "note": ""},
+            {"id": "day-2-start", "date": "2026-03-21", "startMinute": 600, "endMinute": 660, "type": "preferred", "note": ""},
+            {"id": "day-2-end", "date": "2026-03-21", "startMinute": 1260, "endMinute": 1320, "type": "busy", "note": ""},
+            {"id": "day-3-valid", "date": "2026-03-22", "startMinute": 600, "endMinute": 660, "type": "preferred", "note": ""},
+            {"id": "day-3-end", "date": "2026-03-22", "startMinute": 1140, "endMinute": 1200, "type": "busy", "note": ""},
+        ])
 
     def test_12_invalid_same_day_truncation_rejected(self):
         resp = self.client.post(
@@ -357,16 +371,13 @@ class TestApiSmoke(unittest.TestCase):
         )
         self.assertEqual(patch_resp.status_code, 200)
 
-        self.client.put(
-            f"/api/session/{sid}/avail",
-            headers={"X-Participant-Token": alice["participantToken"]},
-            json={"name": "Alice", "avail": {"2026-03-20": {"9": 2, "10": 1}}},
-        )
-        self.client.put(
-            f"/api/session/{sid}/avail",
-            headers={"X-Participant-Token": bob["participantToken"]},
-            json={"name": "Bob", "avail": {"2026-03-20": {"9": 1, "10": 1}}},
-        )
+        self._save_intervals(sid, alice, [
+            {"id": "alice-busy", "date": "2026-03-20", "startMinute": 540, "endMinute": 600, "type": "busy"},
+            {"id": "alice-pref", "date": "2026-03-20", "startMinute": 600, "endMinute": 660, "type": "preferred"},
+        ])
+        self._save_intervals(sid, bob, [
+            {"id": "bob-pref", "date": "2026-03-20", "startMinute": 540, "endMinute": 660, "type": "preferred"},
+        ])
 
         previous_key = server.DEEPSEEK_API_KEY
         setattr(server, "DEEPSEEK_API_KEY", "")
@@ -379,7 +390,7 @@ class TestApiSmoke(unittest.TestCase):
         summary = summary_resp.get_json().get("summary", "")
         self.assertIn("## 关键成员约束", summary)
         self.assertIn("Alice", summary)
-        self.assertIn("关键成员冲突", summary)
+        self.assertIn("不方便", summary)
 
     def test_14_create_draft_fallback_returns_defaults_without_local_nlp(self):
         previous_key = server.DEEPSEEK_API_KEY
@@ -461,24 +472,20 @@ class TestApiSmoke(unittest.TestCase):
     def test_16_delete_session_cascades_storage_rows(self):
         sid, creator_token = self._create_session()
         alice = self._join_session(sid, "Alice", "#00AAFF")
-        self.client.put(
-            f"/api/session/{sid}/avail",
-            headers={"X-Participant-Token": alice["participantToken"]},
-            json={
-                "name": "Alice",
-                "avail": {"2026-03-20": {"9": 1, "10": 2}},
-                "remark": "测试级联删除",
-            },
-        )
+        self._save_intervals(sid, alice, [
+            {"id": "busy", "date": "2026-03-20", "startMinute": 540, "endMinute": 600, "type": "busy"},
+            {"id": "pref", "date": "2026-03-20", "startMinute": 600, "endMinute": 660, "type": "preferred", "note": "刚好接上"},
+        ])
+        self._save_remark(sid, alice, "早上不便")
 
         with server.get_db() as db:
             session_count = db.execute("SELECT COUNT(*) AS c FROM sessions WHERE id=?", (sid,)).fetchone()["c"]
             participant_count = db.execute("SELECT COUNT(*) AS c FROM participants WHERE session_id=?", (sid,)).fetchone()["c"]
-            availability_count = db.execute("SELECT COUNT(*) AS c FROM availability WHERE session_id=?", (sid,)).fetchone()["c"]
+            interval_count = db.execute("SELECT COUNT(*) AS c FROM time_intervals WHERE session_id=?", (sid,)).fetchone()["c"]
 
         self.assertEqual(session_count, 1)
         self.assertEqual(participant_count, 1)
-        self.assertEqual(availability_count, 2)
+        self.assertEqual(interval_count, 2)
 
         delete_resp = self.client.delete(
             f"/api/session/{sid}",
@@ -490,16 +497,77 @@ class TestApiSmoke(unittest.TestCase):
             session_count = db.execute("SELECT COUNT(*) AS c FROM sessions WHERE id=?", (sid,)).fetchone()["c"]
             expected_count = db.execute("SELECT COUNT(*) AS c FROM session_expected_names WHERE session_id=?", (sid,)).fetchone()["c"]
             participant_count = db.execute("SELECT COUNT(*) AS c FROM participants WHERE session_id=?", (sid,)).fetchone()["c"]
-            availability_count = db.execute("SELECT COUNT(*) AS c FROM availability WHERE session_id=?", (sid,)).fetchone()["c"]
+            interval_count = db.execute("SELECT COUNT(*) AS c FROM time_intervals WHERE session_id=?", (sid,)).fetchone()["c"]
 
         self.assertEqual(session_count, 0)
         self.assertEqual(expected_count, 0)
         self.assertEqual(participant_count, 0)
-        self.assertEqual(availability_count, 0)
+        self.assertEqual(interval_count, 0)
 
-    def test_17_legacy_server_module_exports_app(self):
+    def test_17_summary_request_disables_thinking_mode(self):
+        response = Mock(status_code=200)
+        response.json.return_value = {"choices": [{"message": {"content": "OK"}}]}
+        previous_key = server.DEEPSEEK_API_KEY
+        try:
+            server.DEEPSEEK_API_KEY = "x" * 8
+            with patch.object(server.requests, "post", return_value=response) as request:
+                result = server._deepseek_chat("测试", temperature=0.4, max_tokens=500)
+        finally:
+            server.DEEPSEEK_API_KEY = previous_key
+
+        self.assertEqual(result, "OK")
+        payload = request.call_args.kwargs["json"]
+        self.assertEqual(payload.get("model"), server.DEEPSEEK_MODEL)
+        self.assertEqual(payload.get("thinking"), {"type": "disabled"})
+
+    def test_18_create_draft_request_disables_thinking_mode(self):
+        response = Mock(status_code=200)
+        response.json.return_value = {"choices": [{"message": {"content": "{}"}}]}
+        with patch.object(create_draft.requests, "post", return_value=response) as request:
+            result = create_draft._call_deepseek(
+                "测试",
+                "x" * 8,
+                "https://api.deepseek.com/v1/chat/completions",
+                "deepseek-v4-flash",
+            )
+
+        self.assertEqual(result, "{}")
+        payload = request.call_args.kwargs["json"]
+        self.assertEqual(payload.get("model"), "deepseek-v4-flash")
+        self.assertEqual(payload.get("thinking"), {"type": "disabled"})
+
+    def test_19_legacy_server_module_exports_app(self):
         legacy_server = importlib.import_module("server")
         self.assertIs(legacy_server.app, server.app)
+
+    def test_20_storage_migration_resets_old_data_once(self):
+        db = sqlite3.connect(":memory:")
+        db.row_factory = sqlite3.Row
+        db.execute("PRAGMA foreign_keys = ON")
+        for table in ("sessions", "participants", "session_expected_names", "session_required_names", "availability", "time_intervals"):
+            db.execute(f"CREATE TABLE {table}(id TEXT PRIMARY KEY)")
+            db.execute(f"INSERT INTO {table}(id) VALUES(?)", (table,))
+
+        server.storage._migrate_reset_old_scheduling_data(db)
+        server.storage._create_tables(db)
+        self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], server.storage.STORAGE_FORMAT_VERSION)
+        tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        self.assertNotIn("availability", tables)
+        self.assertIn("time_intervals", tables)
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM sessions").fetchone()[0], 0)
+
+        now = 1
+        db.execute(
+            """INSERT INTO sessions(
+                id, schema_version, name, date_s, date_e, hour_s, hour_e,
+                first_hour_s, last_hour_e, creator_name, creator_token_hash,
+                creator_prompt, created_ts, updated_ts
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            ("new-session", 4, "新表", "2026-03-20", "2026-03-20", 9, 12, 9, 12, "", "", "", now, now),
+        )
+        server.storage._migrate_reset_old_scheduling_data(db)
+        self.assertEqual(db.execute("SELECT COUNT(*) FROM sessions WHERE id='new-session'").fetchone()[0], 1)
+        db.close()
 
 
 if __name__ == "__main__":

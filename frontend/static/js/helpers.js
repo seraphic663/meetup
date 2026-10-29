@@ -1,5 +1,3 @@
-import { ST_AVAIL, ST_BUSY, ST_EMPTY } from './constants.js';
-
 let toastTimer = null;
 
 export function $(id) {
@@ -42,71 +40,6 @@ export function lerp(hexA, hexB, ratio) {
   return `rgb(${~~(r1 + (r2 - r1) * ratio)},${~~(g1 + (g2 - g1) * ratio)},${~~(b1 + (b2 - b1) * ratio)})`;
 }
 
-export function normalizeAvail(raw) {
-  if (!raw) return {};
-  const output = {};
-  Object.entries(raw).forEach(([date, value]) => {
-    output[date] = {};
-    if (Array.isArray(value)) {
-      value.forEach(hour => {
-        output[date][String(hour)] = ST_AVAIL;
-      });
-      return;
-    }
-    if (typeof value === 'object') {
-      Object.entries(value).forEach(([hour, status]) => {
-        output[date][String(hour)] = Number(status) || ST_EMPTY;
-      });
-    }
-  });
-  return output;
-}
-
-export function getState(dayAvail, hour) {
-  if (!dayAvail) return ST_EMPTY;
-  const value = dayAvail[String(hour)];
-  return value === ST_AVAIL || value === ST_BUSY ? Number(value) : ST_EMPTY;
-}
-
-export function getSlotSummary(participants, currentUserIndex, myDayAvail, date, hour) {
-  const summary = {
-    availableCount: 0,
-    busyCount: 0,
-    unknownCount: 0,
-    requiredAvailableCount: 0,
-    requiredBusyCount: 0,
-    requiredUnknownCount: 0,
-    requiredBusyNames: [],
-    requiredAvailableNames: [],
-  };
-
-  participants.forEach((participant, index) => {
-    const avail = index === currentUserIndex ? myDayAvail : (participant.avail?.[date] || {});
-    const status = getState(avail, hour);
-    const isRequired = Boolean(participant.isRequired);
-    if (status === ST_AVAIL) {
-      summary.availableCount += 1;
-      if (isRequired) {
-        summary.requiredAvailableCount += 1;
-        summary.requiredAvailableNames.push(participant.name);
-      }
-      return;
-    }
-    if (status === ST_BUSY) {
-      summary.busyCount += 1;
-      if (isRequired) {
-        summary.requiredBusyCount += 1;
-        summary.requiredBusyNames.push(participant.name);
-      }
-      return;
-    }
-    summary.unknownCount += 1;
-    if (isRequired) summary.requiredUnknownCount += 1;
-  });
-
-  return summary;
-}
-
 export function getDates(session) {
   const dates = [];
   const current = new Date(`${session.dateS}T00:00:00`);
@@ -118,15 +51,7 @@ export function getDates(session) {
   return dates;
 }
 
-export function getHours(session) {
-  const hours = [];
-  for (let hour = session.hourS; hour < session.hourE; hour += 1) {
-    hours.push(hour);
-  }
-  return hours;
-}
-
-export function getSlotWindow(session, date) {
+export function getDayTimeWindow(session, date) {
   const baseStart = Number(session?.hourS ?? 9);
   const baseEnd = Number(session?.hourE ?? 21);
   const firstHourS = Number(session?.firstHourS ?? baseStart);
@@ -142,11 +67,6 @@ export function getSlotWindow(session, date) {
     return { start: baseStart, end: lastHourE };
   }
   return { start: baseStart, end: baseEnd };
-}
-
-export function isSlotEnabled(session, date, hour) {
-  const { start, end } = getSlotWindow(session, date);
-  return hour >= start && hour < end;
 }
 
 export function describeTimeWindow(session) {
