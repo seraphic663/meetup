@@ -1,6 +1,7 @@
 import { requestJson } from './api.js';
 import { getSessionAuthHeaders } from './history.js';
 import { $, esc, getDates, getDayTimeWindow, toast } from './helpers.js';
+import { applyUserTheme, saveUserPreferences } from './preferences.js';
 import { state } from './state.js';
 
 const STEPS = [5, 10, 15, 20, 30, 60];
@@ -35,8 +36,8 @@ export function initTimeline() {
   panel.addEventListener('pointercancel', cancelPointer);
 }
 export function startTimeline() {
-  step = 5;
-  orientation = 'horizontal';
+  step = state.userPrefs.step;
+  orientation = state.userPrefs.orientation;
   activeType = 'busy';
   loadedKey = '';
   ownBlocks = {};
@@ -57,6 +58,7 @@ export function renderTimeline() {
   const panel = $('timelinePanel');
   const key = (state.SID || '') + ':' + (state.ME || 'viewer');
   const sessionChanged = key !== loadedKey;
+  const settingsOpen = panel.querySelector('.td-settings')?.open || false;
   const previousScroll = panel.querySelector('.td-scroll');
   const noteInput = panel.querySelector('[data-note]');
   const restoreNoteFocus = noteInput && document.activeElement === noteInput;
@@ -73,10 +75,20 @@ export function renderTimeline() {
       '<header class="td-head"><div><b>时间安排</b><p>空白表示未标记；红色为不方便，绿色为更偏好。</p></div></header>' +
       '<div class="td-tools">' +
         '<div class="td-legend" aria-label="时间条类型">' + toolButton('busy', '不方便') + toolButton('preferred', '更偏好') + '</div>' +
-        '<div class="td-orientation" role="group" aria-label="时间轴方向">' +
-          orientationButton('horizontal', '横向时间') + orientationButton('vertical', '竖向时间') + '</div>' +
-        '<label class="td-step">粒度<select data-step>' + STEPS.map(value =>
-          '<option value="' + value + '"' + (value === step ? ' selected' : '') + '>' + value + ' 分钟</option>').join('') + '</select></label>' +
+        '<details class="td-settings"' + (settingsOpen ? ' open' : '') + '>' +
+          '<summary class="td-settings-trigger" aria-label="时间表设置" title="时间表设置"><span aria-hidden="true">⚙︎</span><span class="sr-only">时间表设置</span></summary>' +
+          '<div class="td-settings-menu">' +
+            '<section class="td-settings-group"><span class="td-settings-label">其他参与者</span><div class="td-settings-options">' +
+              '<button class="tb-btn' + (!state.collapsed ? ' active' : '') + '" id="btnExpandOthers" type="button" aria-pressed="' + (!state.collapsed) + '" onclick="expandOthers()">展开他人</button>' +
+              '<button class="tb-btn' + (state.collapsed ? ' active' : '') + '" id="btnCollapseOthers" type="button" aria-pressed="' + state.collapsed + '" onclick="collapseOthers()">折叠他人</button>' +
+            '</div></section>' +
+            '<section class="td-settings-group"><span class="td-settings-label">时间轴方向</span><div class="td-orientation" role="group" aria-label="时间轴方向">' +
+              orientationButton('horizontal', '横向') + orientationButton('vertical', '竖向') + '</div></section>' +
+            '<section class="td-settings-group"><label class="td-step">时间粒度<select data-step>' + STEPS.map(value =>
+              '<option value="' + value + '"' + (value === step ? ' selected' : '') + '>' + value + ' 分钟</option>').join('') + '</select></label></section>' +
+            '<section class="td-settings-group"><span class="td-settings-label">外观</span><button class="td-theme-toggle" type="button" data-theme-toggle aria-pressed="' + (state.userPrefs.theme === 'dark') + '">' + (state.userPrefs.theme === 'dark' ? '切换到日间模式' : '切换到夜间模式') + '</button></section>' +
+          '</div>' +
+        '</details>' +
         '<span>' + (canEdit ? (orientation === 'vertical' ? '空白处拖动新建；短条移动，长条可调两端。' : '空白处拖动新建；拖条移动，拖两端调整。') + '点条编辑备注。' : '查看各参与者标记的时间区间。') + '</span>' +
       '</div>' +
       '<p class="td-local">个人条 50% 透明；汇总红绿深浅对应各自人数占比。点击查看人数。</p>' +
@@ -484,7 +496,15 @@ function onClick(event) {
   const orientationChoice = target.closest('[data-orientation]');
   if (orientationChoice) {
     orientation = orientationChoice.dataset.orientation;
+    saveTimelinePreferences({ orientation });
     editing = null;
+    renderTimeline();
+    return;
+  }
+  if (target.closest('[data-theme-toggle]')) {
+    const theme = state.userPrefs.theme === 'dark' ? 'light' : 'dark';
+    saveTimelinePreferences({ theme });
+    applyUserTheme(theme);
     renderTimeline();
     return;
   }
@@ -557,6 +577,7 @@ function onChange(event) {
     return;
   }
   step = nextStep;
+  saveTimelinePreferences({ step });
   editing = null;
   renderTimeline();
 }
@@ -567,12 +588,17 @@ function finishStepChange(round) {
   const nextStep = pendingStep.nextStep;
   if (round) roundBlocks(nextStep);
   step = nextStep;
+  saveTimelinePreferences({ step });
   pendingStep = null;
   editing = null;
   selectedSummary = null;
   if (round) scheduleIntervalSave();
   if (round) commitIntervalChanges();
   renderTimeline();
+}
+
+function saveTimelinePreferences(changes) {
+  state.userPrefs = saveUserPreferences({ ...state.userPrefs, ...changes, collapsed: state.collapsed });
 }
 
 function roundBlocks(nextStep) {

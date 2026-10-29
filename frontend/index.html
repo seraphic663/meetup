@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#416ba5">
   <title>群约小助手</title>
+  <script>
+    try {
+      if (JSON.parse(localStorage.getItem('mqa_user_preferences') || '{}').theme === 'dark') {
+        document.documentElement.dataset.theme = 'dark';
+        document.querySelector('meta[name="theme-color"]').content = '#11151d';
+      }
+    } catch (_) {}
+  </script>
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/static/timeline.css">
 </head>
@@ -77,14 +85,13 @@
 
 <section id="setupScreen" class="screen screen-setup hidden">
   <div class="setup-shell">
-    <div class="setup-intro">
-      <div class="logo-area" style="cursor: pointer;" onclick="goToHome()">
-        <div class="logo-heading">
-          <div class="logo-emoji">📅</div>
-          <div class="logo-name">群约小助手</div>
-        </div>
-        <div class="logo-desc">发起时间调查后，大家打开同一个链接，各自填写可参与时段。</div>
+    <div class="setup-brand logo-area" style="cursor: pointer;" onclick="goToHome()">
+      <div class="logo-heading">
+        <div class="logo-emoji">📅</div>
+        <div class="logo-name">群约小助手</div>
       </div>
+    </div>
+    <div class="setup-intro">
       <div class="setup-note">
         <div class="setup-note-title">AI 快速起草</div>
         <div class="fg">
@@ -140,11 +147,6 @@
           <label class="fl" for="sPrompt">发起人提示语 <span class="field-optional">可选</span></label>
           <textarea class="fi prompt-input" id="sPrompt" maxlength="200" placeholder="展示给所有参与者，例如：优先线下，尽量安排在工作日晚上"></textarea>
           <div class="prompt-tools">
-            <div class="prompt-quick">
-              <button class="prompt-chip" type="button" onclick="fillPromptTemplate('工作日晚间优先，线下参加优先。')">工作日晚间优先</button>
-              <button class="prompt-chip" type="button" onclick="fillPromptTemplate('优先线下，无法到场可线上参与。')">线下优先</button>
-              <button class="prompt-chip" type="button" onclick="fillPromptTemplate('请尽量选择连续 1 小时时段，方便安排。')">连续 1 小时</button>
-            </div>
             <div class="prompt-count" id="sPromptCount">0/200</div>
           </div>
         </div>
@@ -161,7 +163,7 @@
           <div class="tag-wrap" id="tagWrap" onclick="focusTagInput(event)">
             <input type="text" class="tag-inp" id="tagInp" placeholder="输入昵称，按回车添加" maxlength="10">
           </div>
-          <div class="tag-hint">群友可点选预设昵称后确认进入，也可手动输入；名单不限制其他昵称。</div>
+          <div class="tag-hint">新用户可点选预设昵称后进入，也可手动输入。</div>
         </div>
       </div>
 
@@ -238,10 +240,6 @@
     <div class="stats-strip" id="statsStrip"></div>
 
     <div class="toolbar">
-      <button class="tb-btn" id="btnExpandOthers" type="button" onclick="expandOthers()">展开他人</button>
-      <button class="tb-btn" id="btnCollapseOthers" type="button" onclick="collapseOthers()">折叠他人</button>
-      <div class="tb-sep"></div>
-      <button class="tb-btn" id="btnPrefs" type="button" onclick="openUserSettings()">用户设置</button>
       <button class="tb-btn tb-btn-ghost" id="btnAISummary" type="button" onclick="openAISummary()">AI 总结</button>
     </div>
 
@@ -310,25 +308,6 @@
     </div>
     <button class="btn-p" type="button" onclick="copyUrl()">复制链接</button>
     <button class="btn-s" type="button" onclick="closeShare()">关闭</button>
-  </div>
-</div>
-
-<div class="overlay" id="settingsOverlay" onclick="overlayBgSettings(event)">
-  <div class="sheet settings-sheet">
-    <div class="sh-bar"></div>
-    <div class="sh-title">用户设置</div>
-    <div class="settings-grid">
-      <div class="settings-block">
-        <div class="settings-title">默认展示</div>
-        <div class="settings-desc">进入表格后是否先折叠其他参与者。</div>
-        <div class="settings-switch">
-          <button class="tb-btn" id="prefCollapseOff" type="button" onclick="setSettingsCollapse(false)">展开他人</button>
-          <button class="tb-btn" id="prefCollapseOn" type="button" onclick="setSettingsCollapse(true)">折叠他人</button>
-        </div>
-      </div>
-    </div>
-    <button class="btn-p" type="button" onclick="saveUserViewPreferences()">保存设置</button>
-    <button class="btn-s" type="button" onclick="closeUserSettings()">关闭</button>
   </div>
 </div>
 

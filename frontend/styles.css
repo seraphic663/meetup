@@ -6,6 +6,7 @@
 
 /* ===== 1. Tokens, reset, and page backdrop ===== */
 :root {
+  color-scheme: light;
   --brand: #416ba5;
   --brand-deep: #2a4b78;
   --brand-soft: #e8eff8;
@@ -15,14 +16,27 @@
   --timeline-preferred-rgb: 22, 163, 74;
   --timeline-person-alpha: 0.5;
   --timeline-neutral: #f1f3f5;
+  --timeline-grid-line: rgba(100, 116, 139, 0.38);
+  --timeline-disabled-bg: repeating-linear-gradient(135deg, #f1f5f9, #f1f5f9 4px, #e8edf2 4px, #e8edf2 8px);
+  --timeline-preferred-ink: #14532d;
+  --timeline-busy-ink: #7f1d1d;
   --accent: #f97316;
   --accent-soft: #fff1e7;
+  --accent-ink: #9a3412;
   --danger: #dc2626;
   --danger-soft: #fee2e2;
+  --danger-ink: #b91c1c;
   --bg: #f7f4ed;
   --bg-strong: #f1ece1;
   --card: rgba(255, 255, 255, 0.84);
   --card-solid: #fffdf8;
+  --input-bg: rgba(248, 250, 252, 0.78);
+  --surface-muted: rgba(15, 23, 42, 0.05);
+  --header-bg: rgba(247, 244, 237, 0.96);
+  --page-background: radial-gradient(circle at top left, rgba(var(--brand-rgb), 0.11), transparent 28%),
+    radial-gradient(circle at top right, rgba(249, 115, 22, 0.12), transparent 24%),
+    linear-gradient(180deg, #f9f6ef 0%, #f5efe4 100%);
+  --grid-line: rgba(15, 23, 42, 0.028);
   --line: rgba(30, 41, 59, 0.12);
   --line-strong: rgba(30, 41, 59, 0.18);
   --text: #1f2937;
@@ -33,6 +47,42 @@
   --radius: 8px;
   --radius-sm: 8px;
   --max-width: 1320px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --brand: #7ba4e7;
+  --brand-deep: #c2d7fc;
+  --brand-soft: #26364f;
+  --brand-rgb: 123, 164, 231;
+  --brand-soft-rgb: 38, 54, 79;
+  --timeline-neutral: #252d38;
+  --timeline-grid-line: rgba(148, 163, 184, 0.36);
+  --timeline-disabled-bg: repeating-linear-gradient(135deg, #252d38, #252d38 4px, #303948 4px, #303948 8px);
+  --timeline-preferred-ink: #d1fae5;
+  --timeline-busy-ink: #fee2e2;
+  --accent-soft: #3b2b1e;
+  --accent-ink: #fdba74;
+  --danger-soft: #431f25;
+  --danger-ink: #fca5a5;
+  --bg: #11151d;
+  --bg-strong: #1a202b;
+  --card: rgba(27, 33, 45, 0.92);
+  --card-solid: #202734;
+  --input-bg: #151b25;
+  --surface-muted: rgba(226, 232, 240, 0.08);
+  --header-bg: rgba(17, 21, 29, 0.96);
+  --page-background: radial-gradient(circle at top left, rgba(var(--brand-rgb), 0.1), transparent 28%),
+    radial-gradient(circle at top right, rgba(249, 115, 22, 0.06), transparent 24%),
+    linear-gradient(180deg, #10141b 0%, #151a23 100%);
+  --grid-line: rgba(226, 232, 240, 0.025);
+  --line: rgba(203, 213, 225, 0.14);
+  --line-strong: rgba(203, 213, 225, 0.22);
+  --text: #e7edf7;
+  --text-soft: #b4c0d3;
+  --text-faint: #94a3b8;
+  --shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+  --shadow-soft: 0 4px 14px rgba(0, 0, 0, 0.22);
 }
 
 *,
@@ -53,9 +103,7 @@ body {
   font-family: "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   font-size: 14px;
   color: var(--text);
-  background: radial-gradient(circle at top left, rgba(var(--brand-rgb), 0.11), transparent 28%),
-    radial-gradient(circle at top right, rgba(249, 115, 22, 0.12), transparent 24%),
-    linear-gradient(180deg, #f9f6ef 0%, #f5efe4 100%);
+  background: var(--page-background);
 }
 
 body * {
@@ -88,8 +136,8 @@ button {
 .site-grid {
   position: absolute;
   inset: 0;
-  background-image: linear-gradient(rgba(15, 23, 42, 0.028) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(15, 23, 42, 0.028) 1px, transparent 1px);
+  background-image: linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
   background-size: 22px 22px;
   mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.45), transparent 80%);
 }
@@ -346,7 +394,7 @@ button {
   flex: 1;
   min-height: 44px;
   border: 1px solid var(--line-strong);
-  background: #fff;
+  background: var(--input-bg);
   color: var(--text);
   font: inherit;
   padding: 7px 10px;
@@ -506,7 +554,7 @@ button {
 .history-mini-remove {
   flex: 0 0 auto;
   background: transparent;
-  color: #b91c1c;
+  color: var(--danger-ink);
   font-weight: 800;
   cursor: pointer;
   padding: 5px 4px;
@@ -590,8 +638,8 @@ button {
 }
 
 .history-action-btn.danger {
-  background: rgba(239, 68, 68, 0.08);
-  color: #b91c1c;
+  background: var(--danger-soft);
+  color: var(--danger-ink);
 }
 
 .history-back-btn {
@@ -608,12 +656,14 @@ button {
 
 .setup-shell {
   width: min(1020px, 100%);
+  align-items: stretch;
   grid-template-columns: minmax(180px, 1fr) minmax(360px, 2fr);
   grid-template-areas:
+    "brand brand"
     "intro activity"
     "participants activity"
-    "participants create";
-  gap: 12px 16px;
+    "create create";
+  gap: 20px 16px;
 }
 
 .setup-intro,
@@ -624,22 +674,25 @@ button {
   gap: 10px;
 }
 
-.setup-intro { grid-area: intro; }
+.setup-brand { grid-area: brand; }
+.setup-intro { grid-area: intro; position: static; }
 .setup-form > .card:first-child { grid-area: activity; }
 .setup-form > .card:nth-child(2) { grid-area: participants; }
-.setup-form > .create-btn { grid-area: create; }
+.setup-form > .create-btn {
+  grid-area: create;
+  justify-self: center;
+  width: min(100%, 420px);
+}
 
-.logo-area,
 .setup-note,
 .join-tip-card,
 .ev-card {
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: var(--card);
+  border: 1px solid var(--line);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-soft);
 }
 
-.logo-desc,
 .ev-meta {
   color: var(--text-soft);
   margin-top: 4px;
@@ -655,6 +708,13 @@ button {
 
 .setup-note {
   display: grid;
+}
+
+.logo-area {
+  display: grid;
+  place-items: center;
+  padding: 2px 0;
+  text-align: center;
 }
 
 .setup-note-item,
@@ -712,7 +772,7 @@ button {
 .tag-wrap {
   width: 100%;
   border: 1px solid var(--line);
-  background: rgba(248, 250, 252, 0.78);
+  background: var(--input-bg);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
   border-radius: 8px;
 }
@@ -738,7 +798,7 @@ select.fi option {
 .fi:focus,
 .tag-wrap.focused {
   border-color: rgba(var(--brand-rgb), 0.46);
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--card-solid);
   box-shadow: 0 0 0 4px rgba(var(--brand-rgb), 0.12);
 }
 
@@ -748,6 +808,8 @@ select.fi option {
   min-height: 58px;
   line-height: 1.4;
 }
+
+.setup-form #sPrompt { max-height: min(40vh, 320px); }
 
 .prompt-helper,
 .tag-hint,
@@ -773,7 +835,7 @@ select.fi option {
 
 .ai-draft-panel {
   border: 1px solid rgba(var(--brand-rgb), 0.14);
-  background: linear-gradient(135deg, rgba(var(--brand-soft-rgb), 0.9), rgba(255, 255, 255, 0.94));
+  background: linear-gradient(135deg, rgba(var(--brand-soft-rgb), 0.9), var(--card-solid));
   margin-top: 8px !important;
   padding: 9px 10px;
   border-radius: 8px;
@@ -813,8 +875,8 @@ select.fi option {
 }
 
 .ai-draft-item {
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: var(--card);
+  border: 1px solid var(--line);
   padding: 7px 8px;
   border-radius: 8px;
 }
@@ -842,7 +904,7 @@ select.fi option {
 }
 
 .ai-draft-list.warning .ai-draft-list-title {
-  color: #b45309;
+  color: var(--accent-ink);
 }
 
 .ai-draft-list-title {
@@ -863,31 +925,9 @@ select.fi option {
 .prompt-tools {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 8px;
   margin-top: 6px;
-}
-
-.prompt-quick {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-.prompt-chip {
-  border-radius: 999px;
-  border: 1px solid rgba(var(--brand-rgb), 0.16);
-  background: rgba(var(--brand-soft-rgb), 0.9);
-  color: var(--brand-deep);
-  cursor: pointer;
-  font-weight: 700;
-  padding: 4px 8px;
-  font-size: 11px;
-}
-
-.prompt-chip:hover,
-.prompt-chip:focus-visible {
-  background: var(--brand-soft);
 }
 
 .prompt-count {
@@ -975,7 +1015,7 @@ select.fi option {
 }
 
 .btn-s {
-  background: rgba(15, 23, 42, 0.06);
+  background: var(--surface-muted);
   color: var(--text);
 }
 
@@ -1008,7 +1048,7 @@ select.fi option {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: linear-gradient(135deg, rgba(var(--brand-soft-rgb), 0.95), rgba(255, 255, 255, 0.9));
+  background: linear-gradient(135deg, rgba(var(--brand-soft-rgb), 0.95), var(--card-solid));
   border: 1px solid rgba(var(--brand-rgb), 0.14);
   gap: 10px;
   margin-bottom: 6px;
@@ -1040,7 +1080,7 @@ select.fi option {
 .nchip {
   border-radius: 999px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.82);
+  background: var(--card);
   cursor: pointer;
   font-weight: 700;
   color: var(--text-soft);
@@ -1066,7 +1106,7 @@ select.fi option {
   position: sticky;
   top: 0;
   z-index: 120;
-  background: rgba(247, 244, 237, 0.96);
+  background: var(--header-bg);
   border-bottom: 1px solid var(--line);
   box-shadow: none;
   padding: 12px 0;
@@ -1215,7 +1255,7 @@ select.fi option {
   justify-content: center;
   border-radius: 999px;
   background: rgba(249, 115, 22, 0.12);
-  color: #b45309;
+  color: var(--accent-ink);
   font-weight: 900;
   line-height: 1.2;
   margin-left: 3px;
@@ -1258,8 +1298,8 @@ select.fi option {
 }
 
 .tb-btn-ghost {
-  margin-left: auto;
-  color: #b45309;
+  margin-left: 0;
+  color: var(--accent-ink);
   border-bottom-color: transparent;
 }
 
@@ -1283,13 +1323,13 @@ select.fi option {
 .tip,
 .prompt-card {
   border-radius: 20px;
-  border: 1px solid rgba(249, 115, 22, 0.18);
-  background: rgba(255, 248, 238, 0.9);
+  border: 1px solid rgba(249, 115, 22, 0.24);
+  background: var(--accent-soft);
   box-shadow: var(--shadow-soft);
 }
 
 .tip {
-  color: #9a3412;
+  color: var(--accent-ink);
   padding: 8px 10px;
   font-size: 12px;
   line-height: 1.45;
@@ -1302,14 +1342,14 @@ select.fi option {
 }
 
 .prompt-title {
-  color: #b45309;
+  color: var(--accent-ink);
   font-weight: 900;
   margin-bottom: 4px;
   font-size: 11px;
 }
 
 .prompt-body {
-  color: #9a3412;
+  color: var(--accent-ink);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -1358,8 +1398,8 @@ select.fi option {
   grid-template-columns: minmax(72px, 0.28fr) minmax(0, 1fr);
   gap: 8px;
   padding: 8px 9px;
-  border: 1px solid rgba(15, 23, 42, 0.07);
-  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--line);
+  background: var(--card);
   border-radius: 7px;
 }
 
@@ -1405,7 +1445,7 @@ select.fi option {
 }
 
 .tutorial-box {
-  background: rgba(255, 253, 248, 0.95);
+  background: var(--card-solid);
   box-shadow: 0 26px 70px rgba(15, 23, 42, 0.24);
   animation: slideUp 0.28s ease;
   width: min(320px, 100%);
@@ -1453,7 +1493,7 @@ select.fi option {
 }
 
 .tutorial-btn-skip {
-  background: rgba(15, 23, 42, 0.06);
+  background: var(--surface-muted);
   color: var(--text-soft);
 }
 
@@ -1481,7 +1521,7 @@ select.fi option {
 .sheet {
   width: min(760px, 100%);
   margin: 0 auto;
-  background: rgba(255, 253, 248, 0.96);
+  background: var(--card-solid);
   box-shadow: 0 -14px 50px rgba(15, 23, 42, 0.18);
   opacity: 0;
   padding: 12px 12px 20px;
@@ -1549,8 +1589,8 @@ select.fi option {
 }
 
 .ai-section {
-  background: rgba(255, 255, 255, 0.76);
-  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: var(--card);
+  border: 1px solid var(--line);
   margin-bottom: 10px;
   padding: 10px;
   border-radius: 8px;
@@ -1588,7 +1628,7 @@ select.fi option {
 }
 
 .sh-url {
-  background: rgba(15, 23, 42, 0.05);
+  background: var(--surface-muted);
   color: var(--text);
   font-weight: 700;
   word-break: break-all;
@@ -1600,41 +1640,6 @@ select.fi option {
 
 .sh-note {
   margin: 10px 0 16px;
-}
-
-.settings-sheet {
-  max-width: 620px;
-}
-
-.settings-grid {
-  display: grid;
-}
-
-.settings-block {
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.7);
-  padding: 10px;
-  border-radius: 8px;
-}
-
-.settings-title {
-  color: var(--brand-deep);
-  font-weight: 900;
-  font-size: 13px;
-}
-
-.settings-desc {
-  color: var(--text-faint);
-  margin-top: 3px;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.settings-switch {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  margin-top: 8px;
 }
 
 .manage-sheet {
@@ -1808,7 +1813,6 @@ select.fi option {
   font-size: 24px;
 }
 
-.logo-area,
 .setup-note,
 .join-tip-card,
 .ev-card,
@@ -1860,13 +1864,16 @@ select.fi option {
 }
 
 .prompt-helper,
-.tag-hint,
 .or-sep,
 .sh-note,
 .ai-draft-meta {
   font-size: 11px;
   line-height: 1.35;
 }
+
+.tag-hint { font-size: 11px; line-height: 1.45; }
+.setup-form .fg > .tag-hint { margin-top: 4px; }
+.setup-form .card:first-child > .tag-hint { margin: 4px 0 6px; }
 
 .btn-hero {
   flex: 0 1 auto;
@@ -1952,7 +1959,6 @@ select.fi option {
   line-height: 1.45;
 }
 
-.settings-grid,
 .manage-grid {
   gap: 9px;
   margin-top: 10px;
@@ -2072,12 +2078,13 @@ select.fi option {
   }
 
   .card,
-  .logo-area,
   .setup-note,
   .join-tip-card,
   .ev-card {
     padding: 10px;
   }
+
+  .logo-area { padding: 0; }
 
   .home-shell,
   .join-shell {
@@ -2204,6 +2211,7 @@ select.fi option {
   .setup-shell {
     grid-template-columns: minmax(0, 680px);
     grid-template-areas:
+      "brand"
       "intro"
       "activity"
       "participants"
