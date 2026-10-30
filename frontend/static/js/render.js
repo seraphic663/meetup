@@ -108,7 +108,7 @@ export function renderJoin() {
 export function renderMain() {
   $('mTitle').textContent = state.S.name;
   const creatorName = state.S.creatorName ? ' · 创建者 ' + esc(state.S.creatorName) : '';
-  const modeHint = state.quickDemo ? ' · 示例预览' : state.ME ? ' · 可填写' : ' · 查看模式';
+  const modeHint = state.quickDemo ? '' : state.ME ? ' · 可填写' : ' · 查看模式';
   $('mSub').innerHTML = '<span class="live-dot"></span>' + fmtRange(state.S) + ' · ' + describeTimeWindow(state.S) + modeHint + creatorName;
   $('btnAISummary')?.classList.toggle('hidden', Boolean(state.quickDemo));
   renderBadges();

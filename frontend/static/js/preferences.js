@@ -2,7 +2,7 @@ const PREF_KEY = 'mqa_user_preferences';
 
 export const DEFAULT_USER_PREFERENCES = {
   collapsed: true,
-  step: 5,
+  step: 15,
   orientation: 'horizontal',
   theme: 'light',
 };
