@@ -1185,14 +1185,12 @@ select.fi option {
 }
 
 .stats-strip {
-  border-bottom: 1px solid var(--line);
   justify-content: center;
   text-align: center;
 }
 
 .toolbar {
   margin-top: 0;
-  border-bottom: 1px solid var(--line);
   justify-content: center;
 }
 
