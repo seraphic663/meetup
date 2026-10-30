@@ -72,26 +72,25 @@ export function renderTimeline() {
   const width = axisEnd - axisStart;
   panel.innerHTML =
     '<section class="td-shell">' +
-      '<header class="td-head"><div><b>时间安排</b><p>空白表示未标记；红色为不方便，绿色为更偏好。</p></div></header>' +
+      '<header class="td-head"><div><b>时间安排</b><p>' + (canEdit ? (orientation === 'vertical' ? '空白处拖动新建；短条移动，长条可调两端；点条编辑备注。' : '空白处拖动新建；拖条移动，拖两端调整；点条编辑备注。') : '查看各参与者标记的时间区间。') + '</p></div></header>' +
       '<div class="td-tools">' +
         '<div class="td-legend" aria-label="时间条类型">' + toolButton('busy', '不方便') + toolButton('preferred', '更偏好') + '</div>' +
         '<details class="td-settings"' + (settingsOpen ? ' open' : '') + '>' +
           '<summary class="td-settings-trigger" aria-label="时间表设置" title="时间表设置"><span aria-hidden="true">⚙︎</span><span class="sr-only">时间表设置</span></summary>' +
           '<div class="td-settings-menu">' +
-            '<section class="td-settings-group"><span class="td-settings-label">其他参与者</span><div class="td-settings-options">' +
-              '<button class="tb-btn' + (!state.collapsed ? ' active' : '') + '" id="btnExpandOthers" type="button" aria-pressed="' + (!state.collapsed) + '" onclick="expandOthers()">展开他人</button>' +
-              '<button class="tb-btn' + (state.collapsed ? ' active' : '') + '" id="btnCollapseOthers" type="button" aria-pressed="' + state.collapsed + '" onclick="collapseOthers()">折叠他人</button>' +
+            '<section class="td-settings-group"><span class="td-settings-label">其他参与者</span><div class="td-segmented" role="group" aria-label="其他参与者">' +
+              '<button class="td-segmented-btn' + (!state.collapsed ? ' active' : '') + '" id="btnExpandOthers" type="button" aria-pressed="' + (!state.collapsed) + '" onclick="expandOthers()">展开</button>' +
+              '<button class="td-segmented-btn' + (state.collapsed ? ' active' : '') + '" id="btnCollapseOthers" type="button" aria-pressed="' + state.collapsed + '" onclick="collapseOthers()">折叠</button>' +
             '</div></section>' +
-            '<section class="td-settings-group"><span class="td-settings-label">时间轴方向</span><div class="td-orientation" role="group" aria-label="时间轴方向">' +
+            '<section class="td-settings-group"><span class="td-settings-label">时间轴方向</span><div class="td-segmented" role="group" aria-label="时间轴方向">' +
               orientationButton('horizontal', '横向') + orientationButton('vertical', '竖向') + '</div></section>' +
-            '<section class="td-settings-group"><label class="td-step">时间粒度<select data-step>' + STEPS.map(value =>
-              '<option value="' + value + '"' + (value === step ? ' selected' : '') + '>' + value + ' 分钟</option>').join('') + '</select></label></section>' +
-            '<section class="td-settings-group"><span class="td-settings-label">外观</span><button class="td-theme-toggle" type="button" data-theme-toggle aria-pressed="' + (state.userPrefs.theme === 'dark') + '">' + (state.userPrefs.theme === 'dark' ? '切换到日间模式' : '切换到夜间模式') + '</button></section>' +
+            '<section class="td-settings-group"><label class="td-settings-label" for="tdStep">时间粒度</label><select class="td-step-select" id="tdStep" data-step>' + STEPS.map(value =>
+              '<option value="' + value + '"' + (value === step ? ' selected' : '') + '>' + value + ' 分钟</option>').join('') + '</select></section>' +
+            '<section class="td-settings-group"><span class="td-settings-label">外观</span><div class="td-segmented" role="group" aria-label="外观">' +
+              themeButton('light', '日间') + themeButton('dark', '夜间') + '</div></section>' +
           '</div>' +
         '</details>' +
-        '<span>' + (canEdit ? (orientation === 'vertical' ? '空白处拖动新建；短条移动，长条可调两端。' : '空白处拖动新建；拖条移动，拖两端调整。') + '点条编辑备注。' : '查看各参与者标记的时间区间。') + '</span>' +
       '</div>' +
-      '<p class="td-local">个人条 50% 透明；汇总红绿深浅对应各自人数占比。点击查看人数。</p>' +
       renderSummaryDetail() +
       '<div class="td-scroll td-scroll-' + orientation + '"><div class="td-days td-days-' + orientation + '">' + getDates(state.S).map(date => renderDay(date, axisStart, axisEnd, width)).join('') + '</div></div>' +
       renderEditor() + renderStepDialog() +
@@ -116,8 +115,13 @@ function toolButton(type, label) {
 }
 
 function orientationButton(value, label) {
-  return '<button type="button" data-orientation="' + value + '" class="td-orientation-btn' +
+  return '<button type="button" data-orientation="' + value + '" class="td-segmented-btn' +
     (orientation === value ? ' active' : '') + '" aria-pressed="' + (orientation === value) + '">' + label + '</button>';
+}
+
+function themeButton(value, label) {
+  return '<button type="button" data-theme="' + value + '" class="td-segmented-btn' +
+    (state.userPrefs.theme === value ? ' active' : '') + '" aria-pressed="' + (state.userPrefs.theme === value) + '">' + label + '</button>';
 }
 
 function renderStepDialog() {
@@ -501,8 +505,9 @@ function onClick(event) {
     renderTimeline();
     return;
   }
-  if (target.closest('[data-theme-toggle]')) {
-    const theme = state.userPrefs.theme === 'dark' ? 'light' : 'dark';
+  const themeChoice = target.closest('[data-theme]');
+  if (themeChoice) {
+    const theme = themeChoice.dataset.theme;
     saveTimelinePreferences({ theme });
     applyUserTheme(theme);
     renderTimeline();
