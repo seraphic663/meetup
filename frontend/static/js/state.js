@@ -12,7 +12,7 @@ export const state = {
   remarkSyncPending: false,
   manageParticipants: [],
   collapsed: true,
-  userPrefs: { collapsed: true, step: 5, orientation: 'horizontal', theme: 'light' },
+  userPrefs: { collapsed: true, step: 15, orientation: 'horizontal', theme: 'light' },
   pollT: null,
   tutorialStep: 0,
   tags: [],

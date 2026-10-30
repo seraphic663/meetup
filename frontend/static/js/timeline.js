@@ -7,9 +7,9 @@ import { state } from './state.js';
 const STEPS = [5, 10, 15, 20, 30, 60];
 const VERTICAL_PX_PER_MINUTE = 0.8;
 const MIN_VERTICAL_RESIZE_MINUTES = 45;
-let step = 5;
+let step = 15;
 let orientation = 'horizontal';
-let activeType = 'busy';
+let activeType = '';
 let loadedKey = '';
 let ownBlocks = {};
 let editing = null;
@@ -22,6 +22,7 @@ let intervalSaveTimer = null;
 let intervalSaveInFlight = false;
 let intervalEditRevision = 0;
 let intervalSaveFailed = false;
+let settingsOpen = false;
 
 export function initTimeline() {
   const panel = $('timelinePanel');
@@ -38,13 +39,14 @@ export function initTimeline() {
 export function startTimeline() {
   step = state.userPrefs.step;
   orientation = state.userPrefs.orientation;
-  activeType = 'busy';
+  activeType = '';
   loadedKey = '';
   ownBlocks = {};
   editing = null;
   drag = null;
   pendingStep = null;
   selectedSummary = null;
+  settingsOpen = false;
   ownBlocksDirty = false;
   ownIntervalsSignature = '';
   clearTimeout(intervalSaveTimer);
@@ -58,7 +60,6 @@ export function renderTimeline() {
   const panel = $('timelinePanel');
   const key = (state.SID || '') + ':' + (state.ME || 'viewer');
   const sessionChanged = key !== loadedKey;
-  const settingsOpen = panel.querySelector('.td-settings')?.open || false;
   const previousScroll = panel.querySelector('.td-scroll');
   const noteInput = panel.querySelector('[data-note]');
   const restoreNoteFocus = noteInput && document.activeElement === noteInput;
@@ -70,27 +71,41 @@ export function renderTimeline() {
   const axisStart = Number(state.S.hourS) * 60;
   const axisEnd = Number(state.S.hourE) * 60;
   const width = axisEnd - axisStart;
+  const guideText = !canEdit
+    ? '查看各参与者标记的时间区间。'
+    : !activeType
+      ? '选“不方便”或“更偏好”后拖动新建；再点选中项可取消。'
+      : orientation === 'vertical'
+        ? '空白处拖动新建；短条移动，长条可调两端；点条编辑备注。'
+        : '空白处拖动新建；拖条移动，拖两端调整；点条编辑备注。';
   panel.innerHTML =
     '<section class="td-shell">' +
-      '<header class="td-head"><div><b>时间安排</b><p>' + (canEdit ? (orientation === 'vertical' ? '空白处拖动新建；短条移动，长条可调两端；点条编辑备注。' : '空白处拖动新建；拖条移动，拖两端调整；点条编辑备注。') : '查看各参与者标记的时间区间。') + '</p></div></header>' +
-      '<div class="td-tools">' +
-        '<div class="td-legend" aria-label="时间条类型">' + toolButton('busy', '不方便') + toolButton('preferred', '更偏好') + '</div>' +
-        '<details class="td-settings"' + (settingsOpen ? ' open' : '') + '>' +
-          '<summary class="td-settings-trigger" aria-label="时间表设置" title="时间表设置"><span aria-hidden="true">⚙︎</span><span class="sr-only">时间表设置</span></summary>' +
-          '<div class="td-settings-menu">' +
+      '<div class="td-toolbar-row">' +
+        '<header class="td-head"><b>时间安排</b></header>' +
+        '<div class="td-tools">' +
+        '<div class="td-legend" role="group" aria-label="时间条类型">' + toolButton('busy', '不方便') + toolButton('preferred', '更偏好') + '</div>' +
+        '<div class="td-quick-actions">' +
+          '<div class="td-settings' + (settingsOpen ? ' open' : '') + '">' +
+            '<button class="td-settings-trigger" type="button" data-settings-toggle aria-expanded="' + settingsOpen + '" aria-label="时间表设置" title="时间表设置"><span aria-hidden="true">⚙︎</span><span class="sr-only">时间表设置</span></button>' +
+            (settingsOpen ? '<div class="td-settings-menu">' +
             '<section class="td-settings-group"><span class="td-settings-label">其他参与者</span><div class="td-segmented" role="group" aria-label="其他参与者">' +
               '<button class="td-segmented-btn' + (!state.collapsed ? ' active' : '') + '" id="btnExpandOthers" type="button" aria-pressed="' + (!state.collapsed) + '" onclick="expandOthers()">展开</button>' +
               '<button class="td-segmented-btn' + (state.collapsed ? ' active' : '') + '" id="btnCollapseOthers" type="button" aria-pressed="' + state.collapsed + '" onclick="collapseOthers()">折叠</button>' +
             '</div></section>' +
             '<section class="td-settings-group"><span class="td-settings-label">时间轴方向</span><div class="td-segmented" role="group" aria-label="时间轴方向">' +
               orientationButton('horizontal', '横向') + orientationButton('vertical', '竖向') + '</div></section>' +
-            '<section class="td-settings-group"><label class="td-settings-label" for="tdStep">时间粒度</label><select class="td-step-select" id="tdStep" data-step>' + STEPS.map(value =>
-              '<option value="' + value + '"' + (value === step ? ' selected' : '') + '>' + value + ' 分钟</option>').join('') + '</select></section>' +
+            '<section class="td-settings-group"><label class="td-settings-label" for="tdStepSelect">时间粒度</label><select class="td-step-select" id="tdStepSelect" data-step-select aria-label="时间粒度">' +
+              STEPS.map(value => '<option value="' + value + '"' + (step === value ? ' selected' : '') + '>' + value + ' 分钟</option>').join('') +
+            '</select></section>' +
             '<section class="td-settings-group"><span class="td-settings-label">外观</span><div class="td-segmented" role="group" aria-label="外观">' +
               themeButton('light', '日间') + themeButton('dark', '夜间') + '</div></section>' +
+            '</div>' : '') +
           '</div>' +
-        '</details>' +
+          '<button class="td-home-button" type="button" onclick="goToHome()">回首页</button>' +
+        '</div>' +
+        '</div>' +
       '</div>' +
+      '<p class="td-guide">' + guideText + '</p>' +
       renderSummaryDetail() +
       '<div class="td-scroll td-scroll-' + orientation + '"><div class="td-days td-days-' + orientation + '">' + getDates(state.S).map(date => renderDay(date, axisStart, axisEnd, width)).join('') + '</div></div>' +
       renderEditor() + renderStepDialog() +
@@ -111,7 +126,8 @@ export function isTimelineDragging() {
 
 function toolButton(type, label) {
   return '<button type="button" data-type="' + type + '" class="td-tool td-tool-' + type +
-    (activeType === type ? ' active' : '') + '" ' + (state.ME ? '' : 'disabled') + '><i></i>' + label + '</button>';
+    (activeType === type ? ' active' : '') + '" aria-pressed="' + (activeType === type) + '" ' +
+    (state.ME ? '' : 'disabled') + '><i></i>' + label + '</button>';
 }
 
 function orientationButton(value, label) {
@@ -467,6 +483,11 @@ async function saveIntervals() {
 
 function onClick(event) {
   const target = event.target;
+  if (target.closest('[data-settings-toggle]')) {
+    settingsOpen = !settingsOpen;
+    renderTimeline();
+    return;
+  }
   if (target.closest('[data-close-summary]')) {
     selectedSummary = null;
     renderTimeline();
@@ -493,7 +514,7 @@ function onClick(event) {
   }
   const tool = target.closest('[data-type]');
   if (tool) {
-    activeType = tool.dataset.type;
+    activeType = activeType === tool.dataset.type ? '' : tool.dataset.type;
     renderTimeline();
     return;
   }
@@ -505,7 +526,7 @@ function onClick(event) {
     renderTimeline();
     return;
   }
-  const themeChoice = target.closest('[data-theme]');
+  const themeChoice = target.closest('button[data-theme]');
   if (themeChoice) {
     const theme = themeChoice.dataset.theme;
     saveTimelinePreferences({ theme });
@@ -523,7 +544,7 @@ function onClick(event) {
   }
   if (target.closest('[data-cancel-step]')) {
     pendingStep = null;
-    renderTimeline();
+    $('timelinePanel')?.querySelector('.td-modal-backdrop')?.remove();
     return;
   }
   if (target.closest('[data-close]')) {
@@ -565,26 +586,37 @@ function onInput(event) {
 }
 
 function onChange(event) {
+  if (event.target.matches('[data-step-select]')) {
+    requestStepChange(Number(event.target.value));
+    return;
+  }
   if (event.target.matches('[data-note]')) {
     clearTimeout(intervalSaveTimer);
     void saveIntervals();
-    return;
   }
-  if (!event.target.matches('[data-step]')) return;
-  const nextStep = Number(event.target.value);
+}
+
+function requestStepChange(nextStep) {
   if (!STEPS.includes(nextStep)) return;
   if (nextStep === step) return;
   const conflicts = getDates(state.S).flatMap(date => (ownBlocks[date] || []).filter(block =>
     block.start % nextStep !== 0 || block.end % nextStep !== 0).map(block => ({ date, block })));
   if (conflicts.length) {
     pendingStep = { nextStep, conflicts: conflicts.length };
-    renderTimeline();
+    const select = $('timelinePanel')?.querySelector('[data-step-select]');
+    if (select) select.value = String(step);
+    $('timelinePanel')?.insertAdjacentHTML('beforeend', renderStepDialog());
     return;
   }
   step = nextStep;
   saveTimelinePreferences({ step });
-  editing = null;
-  renderTimeline();
+  updateStepControl();
+}
+
+function updateStepControl() {
+  const panel = $('timelinePanel');
+  const select = panel?.querySelector('[data-step-select]');
+  if (select) select.value = String(step);
 }
 
 function finishStepChange(round) {
@@ -629,12 +661,13 @@ function roundBlocks(nextStep) {
 
 function onPointerDown(event) {
   const track = event.target.closest('.td-track[data-editable="true"], .td-vtrack[data-editable="true"]');
-  if (!track || event.button !== 0 || event.target.closest('[data-step]')) return;
+  if (!track || event.button !== 0) return;
   const date = track.dataset.date;
   const bounds = getTrackBounds(date);
   const point = minuteAt(event, track, false);
   const bar = event.target.closest('[data-block]');
   const block = bar && (ownBlocks[date] || []).find(item => item.id === bar.dataset.block);
+  if (!block && !activeType) return;
   if (!block && (point < bounds.start || point >= bounds.end)) return;
   selectedSummary = null;
   const edge = event.target.closest('[data-edge]')?.dataset.edge || '';

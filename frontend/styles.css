@@ -1926,6 +1926,8 @@ select.fi option {
 .stats-strip,
 .toolbar { margin-top: 0; }
 
+.toolbar:has(> #btnAISummary.hidden:only-child) { display: none; }
+
 .s-lbl,
 .tb-btn,
 .pbadge {

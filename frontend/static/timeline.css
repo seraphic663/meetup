@@ -1,22 +1,23 @@
-.td-shell { width: 100%; min-width: 0; max-width: 1240px; margin: 0 auto; padding: 12px 0 16px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.td-shell { width: 100%; min-width: 0; max-width: 1240px; margin: 0 auto; padding: 3px 0 12px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .td-head, .td-tools, .td-actions, .td-legend { display: flex; align-items: center; gap: 8px; }
-.td-head { justify-content: center; text-align: center; }
-.td-head > div { max-width: 56ch; }
+.td-toolbar-row { display: flex; align-items: center; justify-content: center; gap: 12px; max-width: 100%; }
+.td-head { flex: 0 0 auto; justify-content: flex-start; text-align: left; white-space: nowrap; }
 .td-head b { color: var(--brand-deep); font-size: 17px; }
-.td-head p { margin: 5px auto 0; color: var(--text-soft); font-size: 12px; line-height: 1.45; }
-.td-tools { justify-content: center; flex-wrap: wrap; margin-top: 14px; }
+.td-guide { margin: 2px auto 0; color: var(--text-soft); font-size: 12px; line-height: 1.45; text-align: center; }
+.td-tools { justify-content: center; flex-wrap: nowrap; margin-top: 0; }
 .td-settings { position: relative; z-index: 20; }
-.td-settings-trigger { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--card); color: var(--text-soft); cursor: pointer; list-style: none; }
-.td-settings-trigger::-webkit-details-marker { display: none; }
-.td-settings-trigger::marker { content: ''; }
+.td-quick-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
+.td-settings-trigger { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--card); color: var(--text-soft); font: inherit; cursor: pointer; }
 .td-settings-trigger span[aria-hidden="true"] { font-size: 19px; line-height: 1; }
-.td-settings[open] > .td-settings-trigger { border-color: rgba(var(--brand-rgb), .48); color: var(--brand-deep); }
-.td-settings-menu { position: absolute; top: calc(100% + 7px); right: 0; display: grid; width: min(300px, calc(100vw - 32px)); padding: 4px 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--card-solid); box-shadow: var(--shadow); text-align: left; }
+.td-settings.open > .td-settings-trigger { border-color: rgba(var(--brand-rgb), .48); color: var(--brand-deep); }
+.td-home-button { min-height: 36px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--card); color: var(--brand-deep); font: inherit; font-size: 12px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.td-settings-menu { position: absolute; top: calc(100% + 7px); right: 0; display: grid; width: min(210px, calc(100vw - 32px)); padding: 4px 10px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--card-solid); box-shadow: var(--shadow); text-align: left; }
 .td-settings-group { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 46px; }
 .td-settings-group + .td-settings-group { border-top: 1px solid var(--line); }
+.td-settings-group > .td-segmented, .td-step-select { box-sizing: border-box; flex: 0 0 100px; width: 100px; }
 .td-settings-label { color: var(--text-soft); font-size: 11px; font-weight: 700; white-space: nowrap; }
 .td-segmented { display: inline-flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-muted); }
-.td-segmented-btn { min-height: 32px; padding: 5px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--text-soft); font: inherit; font-size: 11px; cursor: pointer; white-space: nowrap; }
+.td-segmented-btn { flex: 1 1 0; min-height: 32px; padding: 5px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--text-soft); font: inherit; font-size: 11px; text-align: center; cursor: pointer; white-space: nowrap; }
 .td-segmented-btn.active { background: var(--card-solid); color: var(--brand-deep); font-weight: 800; box-shadow: 0 1px 3px rgba(15,23,42,.12); }
 .td-tool, .td-actions button { min-height: 38px; padding: 6px 10px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
 .td-tool { display: inline-flex; align-items: center; gap: 6px; }
@@ -24,7 +25,7 @@
 .td-tool-preferred i { border-color: rgba(var(--timeline-preferred-rgb), .7); background: rgba(var(--timeline-preferred-rgb), var(--timeline-person-alpha)); }
 .td-tool.active { border-color: rgba(var(--brand-rgb), .2); outline: 0; background: rgba(var(--brand-rgb), .08); color: var(--brand-deep); font-weight: 800; }
 .td-tool:disabled { cursor: not-allowed; opacity: .5; }
-.td-step-select { min-width: 96px; min-height: 34px; margin-left: auto; padding: 5px 9px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--input-bg); color: var(--text); font: inherit; font-size: 11px; }
+.td-step-select { height: 34px; padding: 0 5px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--input-bg); color: var(--text); font: inherit; font-size: 11px; text-align: center; text-align-last: center; cursor: pointer; }
 .td-days { display: grid; width: 100%; min-width: 0; gap: 0; margin-inline: auto; }
 .td-day { width: 100%; min-width: 0; overflow: visible; border: 0; border-radius: 0; background: transparent; }
 .td-day + .td-day { border-top: 1px solid var(--line); }
@@ -117,8 +118,9 @@ button.td-bar:active { cursor: grabbing; }
   .td-vbar-resizable .td-handle::after { opacity: 1; }
 }
 @media (max-width: 700px) {
-  .td-shell { padding: 10px 0 12px; }
+  .td-shell { padding: 2px 0 8px; }
   .td-tools { align-items: center; gap: 7px 8px; flex-wrap: nowrap; }
+  .td-toolbar-row { gap: 8px; }
   .td-legend { flex: 0 0 auto; justify-content: center; width: auto; }
   .td-settings { flex: 0 0 auto; }
   .td-settings-menu { right: auto; left: 50%; transform: translateX(-50%); }
